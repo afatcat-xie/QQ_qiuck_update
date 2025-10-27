@@ -15,4 +15,5 @@ while True:
     s = random_8()
     keyboard.write(s)                      
     keyboard.send('enter')                 
-    time.sleep(0.1)                     
+    time.sleep(0.1)
+#by afatcat-xie
