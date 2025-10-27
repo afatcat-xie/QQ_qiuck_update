@@ -26,7 +26,7 @@ python QQ_quick_update.py
 
 
 
-#English
+
 # QQ_quick_update.py — QQ Status Rapid Update Tool
 
 ## 1. Script Purpose
@@ -40,15 +40,77 @@ Rapidly sends 8-character random strings in the QQ chat window (or any text inpu
 ---
 
 ## 2. One-Click Run
-```bash
+
 # After cloning or downloading the script, install dependencies
 pip install keyboard
 
 # Launch directly
 python QQ_quick_update.py
-```
+
 
 Usage Steps:
 1. Bring the QQ chat window (or other target input field) to the foreground and keep it focused.
 2. Run the script in the terminal, you will see the prompt "Script started, press F8 to stop." and it will begin.
 3. To stop, press F8, and the script will immediately exit and print "F8 pressed, script ended."
+
+以下文本已按「中英左右对照」格式翻译，可直接替换或插入到 README 中。
+
+---
+
+## 3. 编译与打包指南（可选） | Build & Pack Guide (Optional)
+
+如果目标机器不想装 Python 环境，可把脚本打成**单文件可执行程序**。  
+If the target machine has no Python, you can build a **single-file executable**.
+
+---
+
+### 3.1 安装打包工具 | Install PyInstaller
+```bash
+pip install -U pyinstaller
+```
+
+---
+
+### 3.2 一键生成可执行文件 | One-command Build
+```bash
+# Windows → dist/QQ_quick_update.exe  
+# Linux/macOS → dist/QQ_quick_update
+pyinstaller -F -w QQ_quick_update.py \
+            --name QQ_quick_update   \
+            --hidden-import keyboard._winkeyboard
+```
+
+| 参数 | 中文说明 | English Description |
+| ---- | -------- | ------------------- |
+| `-F` | 单文件模式 | one-file bundle |
+| `-w` | 无控制台窗口 | no console window (drop it if you want debug output) |
+| `--hidden-import` | 打包 keyboard 钩子，避免运行报错 | include keyboard’s low-level hook to avoid `ImportError` |
+
+---
+
+### 3.3 编译完成 | Build Finished
+输出文件在 `dist/` 目录：  
+Output files are in `dist/`:
+- **Windows**: `QQ_quick_update.exe`
+- **Linux/macOS**: `QQ_quick_update` (no extension)
+
+拷贝到同平台任意电脑，**双击或终端运行即可**，无需 Python 与第三方库。  
+Copy to any same-OS computer and **double-click or run in terminal**—no Python required.
+
+---
+
+### 3.4 交叉编译提示 | Cross-compilation Note
+PyInstaller **不支持跨平台交叉编译**。  
+PyInstaller does **NOT** support cross-platform builds.  
+需要 Windows `.exe` 请在 Windows 或 Windows CI 里打包。  
+For Windows `.exe`, build on Windows or use a Windows CI (GitHub Actions, AppVeyor, etc.).
+
+---
+
+### 3.5 体积优化（可选）| Size Optimization (Optional)
+```bash
+pip install upx
+pyinstaller -F -w QQ_quick_update.py --upx-dir=/usr/local/bin
+```
+可缩小 30–50 % 体积。  
+Reduces file size by 30–50 %.
