@@ -114,7 +114,13 @@ pyinstaller -F -w QQ_quick_update.py --upx-dir=/usr/local/bin
 ```
 可缩小 30–50 % 体积。  
 Reduces file size by 30–50 %.
+---
+##4.GUI
+如果你不是个傻子，GUI将是非常容易使用的，但不过你可能要懂一些英文。
 
-4.GUI
-如果你不是个傻子，GUI将是非常容易使用的，但不过你可能要懂一些英文。（懒得翻译了，将就看吧）
 If you are not a fool, the GUI will be very easy to use.
+---
+##5.Thanks
+致所有用户：抱歉，由于作者第一次干，很多事还不是很完善
+
+To all users: Sorry, since this is the author's first attempt, many things are not yet perfect.
