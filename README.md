@@ -24,6 +24,8 @@ python QQ_quick_update.py
 终端里运行脚本，看到提示「Script started, press F8 to stop.」即可开始
 想停止时 按 F8，脚本会立即退出并打印「F8 pressed, script ended.」
 
+
+——————————————————————————————————————————————-——————————————
 #English
 # QQ_quick_update.py — QQ Status Rapid Update Tool
 
