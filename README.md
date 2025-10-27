@@ -11,7 +11,7 @@
 ---
 
 ## 2. 一键运行
-```bash
+
 # 克隆或下载脚本后，安装依赖
 pip install keyboard
 
@@ -25,7 +25,7 @@ python QQ_quick_update.py
 想停止时 按 F8，脚本会立即退出并打印「F8 pressed, script ended.」
 
 
-——————————————————————————————————————————————-——————————————
+
 #English
 # QQ_quick_update.py — QQ Status Rapid Update Tool
 
