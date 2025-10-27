@@ -53,7 +53,7 @@ Usage Steps:
 2. Run the script in the terminal, you will see the prompt "Script started, press F8 to stop." and it will begin.
 3. To stop, press F8, and the script will immediately exit and print "F8 pressed, script ended."
 
-以下文本已按「中英左右对照」格式翻译，可直接替换或插入到 README 中。
+
 
 ---
 
