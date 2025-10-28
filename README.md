@@ -1,3 +1,4 @@
+```markdown
 # QQ_quick_update.py —— QQ 状态极速刷屏小工具
 
 ## 1. 脚本作用
@@ -12,20 +13,20 @@
 
 ## 2. 一键运行
 
+```bash
 # 克隆或下载脚本后，安装依赖
 pip install keyboard
 
 # 直接启动
 python QQ_quick_update.py
+```
 
+使用步骤  
+1. 把 QQ 聊天窗口（或其他目标输入框）置于前台并保持焦点  
+2. 终端里运行脚本，看到提示「Script started, press F8 to stop.」即可开始  
+3. 想停止时 按 F8，脚本会立即退出并打印「F8 pressed, script ended.」
 
-使用步骤
-把 QQ 聊天窗口（或其他目标输入框）置于前台并保持焦点
-终端里运行脚本，看到提示「Script started, press F8 to stop.」即可开始
-想停止时 按 F8，脚本会立即退出并打印「F8 pressed, script ended.」
-
-
-
+---
 
 # QQ_quick_update.py — QQ Status Rapid Update Tool
 
@@ -41,19 +42,18 @@ Rapidly sends 8-character random strings in the QQ chat window (or any text inpu
 
 ## 2. One-Click Run
 
+```bash
 # After cloning or downloading the script, install dependencies
 pip install keyboard
 
 # Launch directly
 python QQ_quick_update.py
+```
 
-
-Usage Steps:
-1. Bring the QQ chat window (or other target input field) to the foreground and keep it focused.
-2. Run the script in the terminal, you will see the prompt "Script started, press F8 to stop." and it will begin.
+Usage Steps:  
+1. Bring the QQ chat window (or other target input field) to the foreground and keep it focused.  
+2. Run the script in the terminal, you will see the prompt "Script started, press F8 to stop." and it will begin.  
 3. To stop, press F8, and the script will immediately exit and print "F8 pressed, script ended."
-
-
 
 ---
 
@@ -65,6 +65,7 @@ If the target machine has no Python, you can build a **single-file executable**.
 ---
 
 ### 3.1 安装打包工具 | Install PyInstaller
+
 ```bash
 pip install -U pyinstaller
 ```
@@ -72,6 +73,7 @@ pip install -U pyinstaller
 ---
 
 ### 3.2 一键生成可执行文件 | One-command Build
+
 ```bash
 # Windows → dist/QQ_quick_update.exe  
 # Linux/macOS → dist/QQ_quick_update
@@ -89,6 +91,7 @@ pyinstaller -F -w QQ_quick_update.py \
 ---
 
 ### 3.3 编译完成 | Build Finished
+
 输出文件在 `dist/` 目录：  
 Output files are in `dist/`:
 - **Windows**: `QQ_quick_update.exe`
@@ -100,6 +103,7 @@ Copy to any same-OS computer and **double-click or run in terminal**—no Python
 ---
 
 ### 3.4 交叉编译提示 | Cross-compilation Note
+
 PyInstaller **不支持跨平台交叉编译**。  
 PyInstaller does **NOT** support cross-platform builds.  
 需要 Windows `.exe` 请在 Windows 或 Windows CI 里打包。  
@@ -108,19 +112,26 @@ For Windows `.exe`, build on Windows or use a Windows CI (GitHub Actions, AppVey
 ---
 
 ### 3.5 体积优化（可选）| Size Optimization (Optional)
+
 ```bash
 pip install upx
 pyinstaller -F -w QQ_quick_update.py --upx-dir=/usr/local/bin
 ```
+
 可缩小 30–50 % 体积。  
 Reduces file size by 30–50 %.
----
-##4.GUI
-如果你不是个傻子，GUI将是非常容易使用的，但不过你可能要懂一些英文。
 
+---
+
+## 4. GUI
+
+如果你不是个傻子，GUI 将是非常容易使用的，但不过你可能要懂一些英文。  
 If you are not a fool, the GUI will be very easy to use.
----
-##5.Thanks
-致所有用户：抱歉，由于作者第一次干，很多事还不是很完善
 
+---
+
+## 5. Thanks
+
+致所有用户：抱歉，由于作者第一次干，很多事还不是很完善。  
 To all users: Sorry, since this is the author's first attempt, many things are not yet perfect.
+```
