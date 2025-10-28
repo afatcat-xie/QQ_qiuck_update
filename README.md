@@ -1,4 +1,3 @@
-```markdown
 # QQ_quick_update.py —— QQ 状态极速刷屏小工具
 
 ## 1. 脚本作用
