@@ -22,8 +22,6 @@ python QQ_quick_update.py
 
 使用步骤  
 1. 把 QQ 聊天窗口（或其他目标输入框）置于前台并保持焦点  
-2. 终端里运行脚本，看到提示「Script started, press F8 to stop.」即可开始  
-3. 想停止时 按 F8，脚本会立即退出并打印「F8 pressed, script ended.」
 
 ---
 
@@ -51,8 +49,6 @@ python QQ_quick_update.py
 
 Usage Steps:  
 1. Bring the QQ chat window (or other target input field) to the foreground and keep it focused.  
-2. Run the script in the terminal, you will see the prompt "Script started, press F8 to stop." and it will begin.  
-3. To stop, press F8, and the script will immediately exit and print "F8 pressed, script ended."
 
 ---
 
