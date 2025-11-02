@@ -129,3 +129,10 @@ If you are not a fool, the GUI will be very easy to use.
 
 致所有用户：抱歉，由于作者第一次干，很多事还不是很完善。  
 To all users: Sorry, since this is the author's first attempt, many things are not yet perfect.
+
+---
+
+## 6.Tips
+请注意，当QQ未开启时，无法开启自动点击。
+Please note that auto-click cannot be enabled when QQ is not running.
+
