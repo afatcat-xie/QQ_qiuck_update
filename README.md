@@ -1,4 +1,4 @@
-# QQ_quick_update.py —— QQ 状态极速刷屏小工具
+# QQ 状态极速刷屏小工具
 
 ## 1. 脚本作用
 在 QQ 聊天窗口（或任意文本输入框）内以极快速度循环发送 8 位随机字符串，用于：
@@ -17,7 +17,7 @@
 pip install keyboard
 
 # 直接启动
-python QQ_quick_update.py
+python GUI.py
 ```
 
 使用步骤  
@@ -44,7 +44,7 @@ Rapidly sends 8-character random strings in the QQ chat window (or any text inpu
 pip install keyboard
 
 # Launch directly
-python QQ_quick_update.py
+python GUI.py
 ```
 
 Usage Steps:  
