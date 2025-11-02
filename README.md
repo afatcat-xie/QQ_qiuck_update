@@ -54,67 +54,16 @@ Usage Steps:
 
 ## 3. 编译与打包指南（可选） | Build & Pack Guide (Optional)
 
-如果目标机器不想装 Python 环境，可把脚本打成**单文件可执行程序**。  
-If the target machine has no Python, you can build a **single-file executable**.
+- 如果目标机器不想装 Python 环境，可把脚本打成**单文件可执行程序**。  
+- If the target machine has no Python, you can build a **single-file executable**.
+- 需要虚拟环境。
+- A virtual environment is required.
 
----
-
-### 3.1 安装打包工具 | Install PyInstaller
-
-```bash
-pip install -U pyinstaller
-```
-
----
-
-### 3.2 一键生成可执行文件 | One-command Build
 
 ```bash
-# Windows → dist/QQ_quick_update.exe  
-# Linux/macOS → dist/QQ_quick_update
-pyinstaller -F -w QQ_quick_update.py \
-            --name QQ_quick_update   \
-            --hidden-import keyboard._winkeyboard
+python -m nuitka --standalone --onefile --enable-plugin=tk-inter GUI.py
 ```
 
-| 参数 | 中文说明 | English Description |
-| ---- | -------- | ------------------- |
-| `-F` | 单文件模式 | one-file bundle |
-| `-w` | 无控制台窗口 | no console window (drop it if you want debug output) |
-| `--hidden-import` | 打包 keyboard 钩子，避免运行报错 | include keyboard’s low-level hook to avoid `ImportError` |
-
----
-
-### 3.3 编译完成 | Build Finished
-
-输出文件在 `dist/` 目录：  
-Output files are in `dist/`:
-- **Windows**: `QQ_quick_update.exe`
-- **Linux/macOS**: `QQ_quick_update` (no extension)
-
-拷贝到同平台任意电脑，**双击或终端运行即可**，无需 Python 与第三方库。  
-Copy to any same-OS computer and **double-click or run in terminal**—no Python required.
-
----
-
-### 3.4 交叉编译提示 | Cross-compilation Note
-
-PyInstaller **不支持跨平台交叉编译**。  
-PyInstaller does **NOT** support cross-platform builds.  
-需要 Windows `.exe` 请在 Windows 或 Windows CI 里打包。  
-For Windows `.exe`, build on Windows or use a Windows CI (GitHub Actions, AppVeyor, etc.).
-
----
-
-### 3.5 体积优化（可选）| Size Optimization (Optional)
-
-```bash
-pip install upx
-pyinstaller -F -w QQ_quick_update.py --upx-dir=/usr/local/bin
-```
-
-可缩小 30–50 % 体积。  
-Reduces file size by 30–50 %.
 
 ---
 
@@ -133,6 +82,9 @@ To all users: Sorry, since this is the author's first attempt, many things are n
 ---
 
 ## 6.Tips
-请注意，当QQ未开启时，无法开启自动点击。
-Please note that auto-click cannot be enabled when QQ is not running.
-
+- 请注意，当QQ未开启时，无法开启自动点击。
+- Please note that auto-click cannot be enabled when QQ is not running.
+- 如果你需要在linux上运行此程序，需更改进程校验逻辑，由于作者不太擅长linux，请自行解决或联系作者提交修改方案
+- If you need to run this program on Linux, you need to modify the process verification logic. Since the author is not very familiar with Linux, please resolve it yourself or contact the author to submit a modification plan.
+- 请在虚拟环境中安装nuitka库和keyboard库，或手动指定一份keyboard库。
+- Please install the nuitka and keyboard libraries in a virtual environment, or manually specify a copy of the keyboard library.
