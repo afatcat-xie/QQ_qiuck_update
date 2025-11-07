@@ -88,3 +88,6 @@ To all users: Sorry, since this is the author's first attempt, many things are n
 - If you need to run this program on Linux, you need to modify the process verification logic. Since the author is not very familiar with Linux, please resolve it yourself or contact the author to submit a modification plan.
 - 请在虚拟环境中安装nuitka库和keyboard库，或手动指定一份keyboard库。
 - Please install the nuitka and keyboard libraries in a virtual environment, or manually specify a copy of the keyboard library.
+- 你现在可以使用CLI/You can now use the CLI
+- python GUI.py --cli -i 0.5 -d 30
+
