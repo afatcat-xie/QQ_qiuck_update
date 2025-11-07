@@ -235,49 +235,125 @@ def stop_script():
     log_info("Script stopped.")
 
 # ---------- GUI ----------
+# -----------------  Main entrypoint modification (replace original tail) -----------------
 def excepthook(exc_type, exc_value, exc_tb):
     log_error("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
 sys.excepthook = excepthook
 
-_ensure_log_dir()
-_open_log_session()
-log_info("Program started.")
+def _cli_main():
+    """Pure command-line entrypoint"""
+    import argparse
+    import signal
 
-root = tk.Tk()
-root.title("QQ Quick Update  – by afatcat-xie")
-root.resizable(False, False)
+    parser = argparse.ArgumentParser(description="QQ Quick Update – CLI mode")
+    parser.add_argument("--cli", action="store_true", help="Enter command-line mode")
+    parser.add_argument("-i", "--interval", type=float, default=1.0,
+                        help="Sending interval (seconds, default 1.0)")
+    parser.add_argument("-d", "--duration", type=int, default=None,
+                        help="Running duration (seconds, leave blank for unlimited)")
+    args = parser.parse_args()
 
-# Load settings at launch
-load_settings()
+    if not args.cli:          # If --cli is not present, enter GUI mode
+        return False
 
-# Interval
-ttk.Label(root, text="Interval (seconds)").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-interval_entry = ttk.Entry(root, width=6)
-interval_entry.insert(0, str(time_interval))
-interval_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+    # Below is all CLI logic
+    signal.signal(signal.SIGINT, lambda *_: setattr(sys.modules[__name__], 'running', False))
+    _ensure_log_dir()
+    _open_log_session()
+    log_info("Program started in CLI mode.")
 
-# New: Duration
-ttk.Label(root, text="Duration (seconds, leave blank for unlimited)").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-duration_entry = ttk.Entry(root, width=10)
-duration_entry.insert(0, str(run_duration) if run_duration is not None else "")
-duration_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+    global running, time_interval, run_duration, start_time
+    time_interval = args.interval
+    run_duration = args.duration
+    start_time = _time.time()
+    running = True
 
-# Buttons
-start_btn = ttk.Button(root, text="Start", width=10, command=start_script, state='disabled')
-start_btn.grid(row=2, column=0, padx=10, pady=10)
-stop_btn  = ttk.Button(root, text="Stop",  width=10, command=stop_script)
-stop_btn.grid(row=2, column=1, padx=10, pady=10)
+    # Wait for QQ
+    while not qq_is_running():
+        log_info("QQ.exe not found, waiting …")
+        _time.sleep(2)
+    log_info("QQ.exe detected, start working.")
 
-# Status
-status_label = tk.Label(root, text="Status: Stopped", fg="blue")
-status_label.grid(row=3, column=0, columnspan=2, pady=5)
+    try:
+        while running:
+            if keyboard.is_pressed('f8'):
+                log_info("F8 pressed, exit.")
+                break
+            if not qq_is_running():
+                log_info("QQ.exe lost, pause until it returns …")
+                while running and not qq_is_running():
+                    _time.sleep(1)
+                if not running:
+                    break
+            keyboard.write(random_8())
+            keyboard.send('enter')
+            _time.sleep(time_interval)
 
-tk.Label(root, text="Tip: Put QQ chat box in focus and press Start.", font=(None, 9))\
-  .grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+            if run_duration is not None and (_time.time() - start_time) >= run_duration:
+                log_info("Duration reached, exit.")
+                break
+    except KeyboardInterrupt:
+        log_info("Ctrl-C caught, exit.")
+    finally:
+        running = False
+        if log_fp is not None:
+            log_fp.close()
+    return True
 
-# Start the monitoring thread
-threading.Thread(target=monitor_qq, daemon=True).start()
+# -------- Actual entrypoint --------
+if __name__ == "__main__":
+    # --- Added ASCII Art Welcome Message ---
+    ascii_art = [
+        "     _      _____      _      _____    ____      _      _____ ",
+        "    / \    |  ___|    / \    |_   _|  / ___|    / \    |_   _|",
+        "   / _ \   | |_      / _ \     | |   | |       / _ \     | |  ",
+        "  / ___ \  |  _|    / ___ \    | |   | |___   / ___ \    | |  ",
+        " /_/   \_\ |_|     /_/   \_\   |_|    \____| /_/   \_\   |_|  ",
+        "                                                              ",
+        "https://github.com/afatcat-xie/QQ_qiuck_update",
+        "------------------------------------------------",
+        "",
+    ]
+    for line in ascii_art:
+        print(line)
+    # --- End of Added ASCII Art ---
 
-log_info("GUI initialized.")
-root.mainloop()
+    if _cli_main():          # If CLI mode handled the program, exit directly
+        sys.exit(0)
+
+    # Otherwise, proceed to GUI
+    _ensure_log_dir()
+    _open_log_session()
+    log_info("Program started in GUI mode.")
+
+    root = tk.Tk()
+    root.title("QQ Quick Update  – by afatcat-xie")
+    root.resizable(False, False)
+
+    load_settings()
+
+    ttk.Label(root, text="Interval (seconds)").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    interval_entry = ttk.Entry(root, width=6)
+    interval_entry.insert(0, str(time_interval))
+    interval_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+    ttk.Label(root, text="Duration (seconds, leave blank for unlimited)").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    duration_entry = ttk.Entry(root, width=10)
+    duration_entry.insert(0, str(run_duration) if run_duration is not None else "")
+    duration_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+    start_btn = ttk.Button(root, text="Start", width=10, command=start_script, state='disabled')
+    start_btn.grid(row=2, column=0, padx=10, pady=10)
+    stop_btn = ttk.Button(root, text="Stop", width=10, command=stop_script)
+    stop_btn.grid(row=2, column=1, padx=10, pady=10)
+
+    status_label = tk.Label(root, text="Status: Stopped", fg="blue")
+    status_label.grid(row=3, column=0, columnspan=2, pady=5)
+
+    tk.Label(root, text="Tip: Put QQ chat box in focus and press Start.", font=(None, 9)) \
+        .grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+
+    threading.Thread(target=monitor_qq, daemon=True).start()
+    log_info("GUI initialized.")
+    root.mainloop()
