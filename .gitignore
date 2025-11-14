@@ -1,2 +1,8 @@
 logs
 venv
+GUI.onefile-build
+GUI.dist
+GUI.build
+GUI.exe
+test.py
+.gitignore
