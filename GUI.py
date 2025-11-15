@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # QQ_quick_update_gui.py  by afatcat-xie
-#
-# Enhancement: Loop detection for whether QQ.exe exists, automatic enable/disable buttons, console English logs.
-# NEW: Save/Load settings to/from qq_quick_update.ini
-# NEW: Console logs with timestamp, auto-create "logs" folder, save all stdout/stderr to ini-style log file named by session start time.
-# NEW: Hotkey support for starting/stopping the script (e.g., Ctrl+Alt+Q to toggle, F8 to stop).
-# NEW: Program can be started by hotkey even if GUI is not visible.
 
 import random
 import string
@@ -29,8 +23,8 @@ worker_thread = None
 time_interval = 1.0          # Default sending interval
 qq_exists = False            # Current QQ status
 lock = threading.Lock()      # Protect qq_exists read and write
-run_duration = None          # New: running duration in seconds (None = unlimited)
-start_time = None            # New: timestamp when worker started
+run_duration = None          # Running duration in seconds (None = unlimited)
+start_time = None            # Timestamp when worker started
 
 INI_FILE = "qq_quick_update.ini"
 LOG_DIR = "logs"
@@ -38,7 +32,7 @@ log_fp = None
 log_ini = None
 log_lock = threading.Lock()
 
-# --- NEW: Global hotkey variables ---
+# --- Global hotkey variables ---
 TOGGLE_HOTKEY = 'ctrl+alt+q'
 STOP_HOTKEY = 'f8'
 hotkey_thread = None
