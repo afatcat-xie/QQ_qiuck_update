@@ -144,4 +144,3 @@ For more convenient program control, the following global hotkeys are supported:
 -   如果 GUI 窗口被隐藏，热键仍可正常工作。
     If the GUI window is hidden, hotkeys will still function correctly.
 
-```
