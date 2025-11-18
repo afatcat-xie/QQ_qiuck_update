@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# QQ_quick_update_gui.py  by afatcat-xie
+# QQ_quick_update_gui.py by afatcat-xie
+#
+# This script is designed to send random 8-character strings followed by Enter
+# into a focused QQ chat window at a specified interval. It supports both
+# a graphical user interface (GUI) and a command-line interface (CLI).
+#
+# Features include:
+# - Detection of QQ.exe process.
+# - Customizable sending interval and duration.
+# - Global hotkeys (Ctrl+Alt+Q to toggle, F8 to stop).
+# - Automatic logging of events and errors.
+# - Automatic stopping if QQ.exe closes.
+# - New: Records and logs the reason for program exit.
 
 import random
 import string
@@ -9,15 +21,16 @@ import time as _time
 import ctypes
 import ctypes.wintypes
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox # Import messagebox for error dialogs
 import keyboard
 import os
 import configparser
 import sys
 from datetime import datetime
 import traceback
+import signal # Import signal for CLI mode graceful exit
 
-# ----------Global variable ----------
+# ---------- Global variables ----------
 running = False
 worker_thread = None
 time_interval = 1.0          # Default sending interval
@@ -39,12 +52,17 @@ hotkey_thread = None
 gui_window = None # Reference to the main Tkinter window
 is_gui_visible = False # Track if GUI is visible
 
+# New global for program exit reason
+program_exit_reason = "Program terminated normally." # Default assumed reason for program exit
+
 # ---------- Logging ----------
 def _ensure_log_dir():
+    """Ensures the log directory exists."""
     if not os.path.exists(LOG_DIR):
         os.makedirs(LOG_DIR)
 
 def _open_log_session():
+    """Opens a new log file for the current session."""
     global log_fp, log_ini
     session_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_path = os.path.join(LOG_DIR, f"{session_time}.ini")
@@ -63,6 +81,7 @@ def _open_log_session():
 
 
 def _log_print(level, msg):
+    """Prints a message to console and logs it to the current session file."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {level}: {msg}"
     print(line)  # still to console
@@ -78,13 +97,16 @@ def _log_print(level, msg):
                 pass  # ignore log write errors
 
 def log_info(msg):
+    """Logs an informational message."""
     _log_print("INFO", msg)
 
 def log_error(msg):
+    """Logs an error message."""
     _log_print("ERROR", msg)
 
 # ---------- INI helper ----------
 def load_settings():
+    """Loads settings from the INI file."""
     global time_interval, run_duration
     if not os.path.isfile(INI_FILE):
         return
@@ -98,9 +120,10 @@ def load_settings():
         else:
             run_duration = int(dur) if dur.isdigit() and int(dur) > 0 else None
     except Exception as e:
-        log_error(f"Load settings failed: {e}")
+        log_error(f"Failed to load settings: {e}")
 
 def save_settings():
+    """Saves current settings to the INI file."""
     cfg = configparser.ConfigParser()
     cfg["Settings"] = {
         "interval": str(time_interval),
@@ -111,7 +134,7 @@ def save_settings():
             cfg.write(f)
         log_info("Settings saved.")
     except Exception as e:
-        log_error(f"Save settings failed: {e}")
+        log_error(f"Failed to save settings: {e}")
 
 # ---------- Win32 detects QQ.exe ----------
 TH32CS_SNAPPROCESS = 0x00000002
@@ -152,6 +175,7 @@ def qq_is_running():
 
 # ---------- Background monitoring thread ----------
 def monitor_qq():
+    """Monitors the presence of QQ.exe and updates GUI."""
     global qq_exists
     while True:
         try:
@@ -169,6 +193,9 @@ def monitor_qq():
                     gui_window.after(0, auto_stop_if_needed)
         except Exception as e:
             log_error(f"Monitor thread error: {e}")
+            if gui_window:
+                # Schedule stop_script with an error reason if GUI exists
+                gui_window.after(0, stop_script_with_reason, f"QQ monitoring thread encountered an error: {e}")
         _time.sleep(1)
 
 def auto_stop_if_needed():
@@ -176,7 +203,7 @@ def auto_stop_if_needed():
     global running
     if running:
         log_info("QQ.exe lost, stopping script automatically.")
-        stop_script()
+        stop_script_with_reason("QQ process lost, script stopped automatically")
 
 def update_buttons(qq_running):
     """Called in main thread to enable/disable Start button."""
@@ -187,9 +214,11 @@ def update_buttons(qq_running):
 
 # ---------- Basic logic ----------
 def random_8():
+    """Generates a random 8-character string."""
     return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
 def worker():
+    """The main worker thread that sends random strings."""
     global running, start_time
     start_time = _time.time()
     try:
@@ -201,7 +230,7 @@ def worker():
                 log_info(f"{STOP_HOTKEY} hotkey pressed, stopping script.")
                 # Use root.after for safe stopping from background thread
                 if gui_window:
-                    gui_window.after(0, stop_script)
+                    gui_window.after(0, stop_script_with_reason, f"Worker thread stopped by hotkey '{STOP_HOTKEY}'")
                 break
             # --- End check ---
 
@@ -214,14 +243,15 @@ def worker():
                 if elapsed >= run_duration:
                     log_info("Duration reached, stopping automatically.")
                     if gui_window:
-                        gui_window.after(0, stop_script)
+                        gui_window.after(0, stop_script_with_reason, "Worker thread stopped due to reaching preset duration")
                     break
     except Exception as e:
         log_error(f"Worker thread error: {e}")
         if gui_window:
-            gui_window.after(0, stop_script)
+            gui_window.after(0, stop_script_with_reason, f"Worker thread encountered an error: {e}")
 
 def start_script():
+    """Starts the script's main functionality."""
     global running, worker_thread, time_interval, run_duration, start_time
     if running:
         return
@@ -254,24 +284,37 @@ def start_script():
         gui_window.lift() # Bring to front
 
 def stop_script():
+    """Stops the worker script without a specific reason, used internally by other stop functions."""
     global running
+    if not running:
+        return
     running = False
     if worker_thread and worker_thread.is_alive():
-        # Daemon threads will be terminated when the main thread exits.
-        # No explicit join is usually needed here unless graceful shutdown of the thread is critical.
-        pass
+        pass # Daemon threads will be terminated when the main thread exits.
     status_label.config(text="Status: Stopped")
     log_info("Script stopped.")
+
+def stop_script_with_reason(reason="Unknown reason"):
+    """Stops the script and logs a specific reason."""
+    global running
+    if not running:
+        return
+    running = False
+    if worker_thread and worker_thread.is_alive():
+        pass
+    status_label.config(text="Status: Stopped")
+    log_info(f"Script stopped. Reason: {reason}")
+
 
 # ---------- Hotkey handling ----------
 def toggle_script():
     """Handles the toggle hotkey (Ctrl+Alt+Q)."""
-    global running, gui_window, is_gui_visible, hotkey_thread
+    global running, gui_window, is_gui_visible
 
     if running:
         # If running, stop the script
         log_info("Toggle hotkey pressed: Stopping script.")
-        stop_script()
+        stop_script_with_reason(f"Toggle hotkey '{TOGGLE_HOTKEY}' triggered stop")
     else:
         # If not running, try to start it
         log_info("Toggle hotkey pressed: Attempting to start script.")
@@ -286,8 +329,6 @@ def toggle_script():
                 gui_window.lift()
 
 
-# *** FIX START ***
-# Modified to receive the hotkey name string directly
 def on_hotkey_press(hotkey_name):
     """Callback for hotkey events. hotkey_name is the string representation of the hotkey."""
     log_info(f"Hotkey '{hotkey_name}' pressed.")
@@ -295,10 +336,14 @@ def on_hotkey_press(hotkey_name):
         # Use root.after to call GUI-related functions from the main thread
         if gui_window:
             gui_window.after(0, toggle_script)
+        else: # CLI mode, directly toggle
+            toggle_script()
     elif hotkey_name == STOP_HOTKEY:
         if gui_window:
-            gui_window.after(0, stop_script)
-# *** FIX END ***
+            gui_window.after(0, stop_script_with_reason, f"Hotkey '{STOP_HOTKEY}' triggered stop")
+        else: # CLI mode, directly stop
+            stop_script_with_reason(f"Hotkey '{STOP_HOTKEY}' triggered stop")
+
 
 def run_hotkey_listener():
     """Thread function to listen for hotkeys."""
@@ -319,7 +364,6 @@ def run_hotkey_listener():
         if gui_window:
             gui_window.after(0, lambda: status_label.config(text="Status: Hotkey Error"))
 
-
 def show_gui():
     """Shows the Tkinter GUI window."""
     global gui_window, is_gui_visible
@@ -339,49 +383,83 @@ def hide_gui():
         is_gui_visible = False
         log_info("GUI window hidden.")
 
-def on_closing():
-    """Handles the window close event."""
-    global running
-    log_info("Window closing event triggered.")
-    stop_script() # Ensure script stops if running
-    # Unhook hotkeys to prevent issues on exit
+def perform_cleanup(reason=None):
+    """
+    Performs all necessary cleanup actions before the program exits.
+    Logs the final exit reason.
+    """
+    global running, program_exit_reason, log_fp, log_ini, gui_window
+
+    if reason:
+        program_exit_reason = reason # Update the global exit reason
+
+    # Stop the script if it's still running
+    if running:
+        stop_script_with_reason("Script automatically stopped before program exit") # This logs script stopped message
+
+    # Log the final program exit reason
+    log_info(f"Program final exit reason: {program_exit_reason}")
+
+    # Unhook hotkeys
     try:
         keyboard.unhook_all()
         log_info("All hotkeys unhooked.")
     except Exception as e:
         log_error(f"Failed to unhook hotkeys: {e}")
+
+    # Close log file
     if log_fp:
-        log_fp.close()
-        log_info("Log file closed.")
-    if gui_window:
+        with log_lock:
+            try:
+                log_fp.close()
+                # log_info("Log file closed.") # This message won't go to file, but to console
+            except Exception as e:
+                print(f"ERROR: Could not properly close log file: {e}")
+        log_fp = None
+        log_ini = None
+
+    # Destroy GUI window if it exists and hasn't been destroyed yet
+    if gui_window and gui_window.winfo_exists():
         gui_window.destroy()
         log_info("GUI window destroyed.")
-    # sys.exit(0) # This might be too abrupt if called from other contexts.
-    # Let's allow the program to naturally exit after Tkinter mainloop is done.
-    # If hotkey_thread is daemon, it will exit with the main thread.
+
+    running = False # Ensure running flag is false
+
+def on_closing():
+    """Handles the GUI window close event."""
+    log_info("Window closing event triggered.")
+    perform_cleanup("GUI window closed by user")
+    # root.mainloop() will naturally exit after gui_window.destroy()
 
 def excepthook(exc_type, exc_value, exc_tb):
-    """Custom exception hook for logging unhandled exceptions."""
+    """Custom exception hook for logging unhandled exceptions and performing cleanup."""
+    global gui_window
     log_error("--- Unhandled Exception ---")
-    log_error("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+    error_details = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    log_error(error_details)
     log_error("-------------------------")
-    # If GUI is available, show error there too
-    if gui_window and not running: # Only show if not actively running, to avoid interrupting
-        try:
-            error_msg = traceback.format_exception(exc_type, exc_value, exc_tb)
-            tk.messagebox.showerror("Unhandled Exception", "".join(error_msg))
-        except Exception as e:
-            log_error(f"Failed to show error messagebox: {e}")
-    # If in CLI mode and an exception occurs, it might be better to exit.
-    # For GUI mode, letting mainloop finish is usually fine.
 
+    reason = f"Program exited due to an unhandled exception: {exc_type.__name__}: {exc_value}"
+
+    # Perform cleanup. If GUI exists, schedule on main thread.
+    if gui_window and gui_window.winfo_exists():
+        # Display an error message box for GUI users
+        try:
+            messagebox.showerror("Unhandled Exception", f"An unhandled error occurred:\n\n{exc_value}\n\nSee logs for details.")
+        except Exception as msgbox_e:
+            log_error(f"Failed to show error messagebox: {msgbox_e}")
+        gui_window.after(0, perform_cleanup, reason)
+        # Allow Tkinter mainloop to finish naturally after cleanup
+    else:
+        # CLI mode or early error before GUI init
+        perform_cleanup(reason)
+        sys.exit(1) # Explicitly exit for CLI or non-GUI related errors
 
 sys.excepthook = excepthook
 
 def _cli_main():
     """Pure command-line entrypoint"""
     import argparse
-    import signal
 
     parser = argparse.ArgumentParser(description="QQ Quick Update – CLI mode")
     parser.add_argument("--cli", action="store_true", help="Enter command-line mode")
@@ -397,13 +475,10 @@ def _cli_main():
     # Below is all CLI logic
     # Handle Ctrl+C gracefully for CLI mode
     def signal_handler(sig, frame):
+        global running, program_exit_reason
         log_info("Ctrl+C caught, initiating shutdown.")
-        setattr(sys.modules[__name__], 'running', False) # Set global 'running' flag to False
-        # Attempt to unhook hotkeys if they were registered
-        try:
-            keyboard.unhook_all()
-        except Exception as e:
-            log_error(f"Error unhooking hotkeys on Ctrl+C: {e}")
+        running = False # Set global 'running' flag to False
+        program_exit_reason = "CLI mode interrupted by user (Ctrl+C)" # Set exit reason
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -413,41 +488,48 @@ def _cli_main():
     _open_log_session()
     log_info("Program started in CLI mode.")
 
-    global running, time_interval, run_duration, start_time
+    global running, time_interval, run_duration, start_time, program_exit_reason
     time_interval = args.interval
     run_duration = args.duration
     start_time = _time.time()
     running = True
+    program_exit_reason = "CLI mode completed and exited normally." # Default CLI exit reason
 
-    # Wait for QQ and hotkey
+    # Wait for QQ
     while running and not qq_is_running():
-        log_info("QQ.exe not found, waiting …")
+        log_info("QQ.exe not found, waiting \u2026")
         _time.sleep(2)
     if not running: # If Ctrl+C was pressed while waiting for QQ
-        log_info("Program terminated before QQ was found.")
-        if log_fp is not None:
-            log_fp.close()
-        return True
+        perform_cleanup(program_exit_reason) # Use the reason set by signal_handler
+        return True # Exit CLI mode
 
-    log_info("QQ.exe detected, start working.")
+    log_info("QQ.exe detected, starting work.")
 
-    # --- CLI Mode Hotkey Listener ---
     # Start hotkey listener in a separate thread for CLI mode as well
-    hotkey_thread = threading.Thread(target=run_hotkey_listener, daemon=True)
-    hotkey_thread.start()
+    # It was already started at the top level, but ensure it's running.
+    # If hotkey_thread is not alive for some reason, restart.
+    global hotkey_thread
+    if not hotkey_thread or not hotkey_thread.is_alive():
+        hotkey_thread = threading.Thread(target=run_hotkey_listener, daemon=True)
+        hotkey_thread.start()
+
 
     try:
         while running:
-            # Check for F8 hotkey to stop
+            # Check for F8 hotkey to stop (hotkey_listener handles this, but direct check for quick exit)
+            # This check is somewhat redundant if hotkey_listener calls stop_script_with_reason,
+            # but serves as a quick exit point for the loop.
             if keyboard.is_pressed(STOP_HOTKEY):
                 log_info(f"{STOP_HOTKEY} hotkey pressed, exiting CLI mode.")
+                program_exit_reason = f"CLI mode stopped by hotkey '{STOP_HOTKEY}'"
                 break
 
             if not qq_is_running():
-                log_info("QQ.exe lost, pause until it returns …")
+                log_info("QQ.exe lost, pausing until it returns \u2026")
                 while running and not qq_is_running():
                     _time.sleep(1)
                 if not running: # If Ctrl+C was pressed during the wait
+                    # program_exit_reason would have been set by signal_handler
                     break
                 log_info("QQ.exe re-detected.")
 
@@ -457,23 +539,19 @@ def _cli_main():
 
             if run_duration is not None and (_time.time() - start_time) >= run_duration:
                 log_info("Duration reached, exiting CLI mode.")
+                program_exit_reason = "CLI mode stopped due to reaching preset duration"
                 break
     except Exception as e:
         log_error(f"An error occurred during CLI operation: {e}")
+        program_exit_reason = f"An error occurred during CLI operation: {e}"
     finally:
-        running = False # Ensure flag is false
-        log_info("CLI operation finished. Cleaning up.")
-        try:
-            keyboard.unhook_all() # Clean up hotkeys
-        except Exception as e:
-            log_error(f"Error unhooking hotkeys during CLI cleanup: {e}")
-        if log_fp is not None:
-            log_fp.close()
+        perform_cleanup(program_exit_reason) # Ensure cleanup is done with the final reason
     return True # Indicate that CLI mode handled the program execution
 
 # -------- Actual entrypoint --------
 if __name__ == "__main__":
-    # --- Added ASCII Art Welcome Message ---
+    # --- ASCII Art Welcome Message ---
+    # This is a decorative welcome message displayed in the console.
     ascii_art = [
         "     _      _____      _      _____    ____      _      _____ ",
         "    / \    |  ___|    / \    |_   _|  / ___|    / \    |_   _|",
@@ -487,59 +565,71 @@ if __name__ == "__main__":
     ]
     for line in ascii_art:
         print(line)
-    # --- End of Added ASCII Art ---
+    # --- End of ASCII Art ---
 
-    # Start hotkey listener in a separate thread early on
+    # Start hotkey listener in a separate thread early on.
     # This allows it to capture hotkeys even if CLI mode is not explicitly chosen
     # or if GUI is hidden. This thread is daemon, so it will exit with the main program.
     hotkey_thread = threading.Thread(target=run_hotkey_listener, daemon=True)
     hotkey_thread.start()
 
-    # Check if CLI mode was requested. If _cli_main returns True, it handled the exit.
-    if _cli_main():
-        sys.exit(0)
+    try:
+        # Check if CLI mode was requested. If _cli_main returns True, it handled the exit.
+        if _cli_main():
+            sys.exit(0)
 
-    # Otherwise, proceed to GUI initialization
-    _ensure_log_dir()
-    _open_log_session()
-    log_info("Program started in GUI mode.")
+        # Otherwise, proceed to GUI initialization
+        _ensure_log_dir()
+        _open_log_session()
+        log_info("Program started in GUI mode.")
 
-    # --- Tkinter GUI Setup ---
-    root = tk.Tk()
-    gui_window = root # Assign to global variable for other functions to use
-    root.title("QQ Quick Update  – by afatcat-xie")
-    # root.resizable(False, False) # Keep resizable for potential future improvements
+        # --- Tkinter GUI Setup ---
+        root = tk.Tk()
+        gui_window = root # Assign to global variable for other functions to use
+        root.title("QQ Quick Update – by afatcat-xie")
+        # root.resizable(False, False) # Keep resizable for potential future improvements
 
-    load_settings()
+        load_settings()
 
-    ttk.Label(root, text="Interval (seconds)").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-    interval_entry = ttk.Entry(root, width=6)
-    interval_entry.insert(0, str(time_interval))
-    interval_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(root, text="Interval (seconds)").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        interval_entry = ttk.Entry(root, width=6)
+        interval_entry.insert(0, str(time_interval))
+        interval_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    ttk.Label(root, text="Duration (seconds, leave blank for unlimited)").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-    duration_entry = ttk.Entry(root, width=10)
-    duration_entry.insert(0, str(run_duration) if run_duration is not None else "")
-    duration_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(root, text="Duration (seconds, leave blank for unlimited)").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        duration_entry = ttk.Entry(root, width=10)
+        duration_entry.insert(0, str(run_duration) if run_duration is not None else "")
+        duration_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
-    start_btn = ttk.Button(root, text="Start", width=10, command=start_script, state='disabled')
-    start_btn.grid(row=2, column=0, padx=10, pady=10)
-    stop_btn = ttk.Button(root, text="Stop", width=10, command=stop_script)
-    stop_btn.grid(row=2, column=1, padx=10, pady=10)
+        start_btn = ttk.Button(root, text="Start", width=10, command=start_script, state='disabled')
+        start_btn.grid(row=2, column=0, padx=10, pady=10)
+        stop_btn = ttk.Button(root, text="Stop", width=10, command=lambda: stop_script_with_reason("GUI Stop button triggered stop"))
+        stop_btn.grid(row=2, column=1, padx=10, pady=10)
 
-    status_label = tk.Label(root, text="Status: Stopped", fg="blue")
-    status_label.grid(row=3, column=0, columnspan=2, pady=5)
+        status_label = tk.Label(root, text="Status: Stopped", fg="blue")
+        status_label.grid(row=3, column=0, columnspan=2, pady=5)
 
-    # Updated Tip message to include hotkey info
-    tk.Label(root, text=f"Tip: Put QQ chat box in focus. Use '{TOGGLE_HOTKEY.replace('+', ' + ')}' to toggle Start/Stop, '{STOP_HOTKEY}' to stop.", font=(None, 9)) \
-        .grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+        # Updated Tip message to include hotkey info
+        tk.Label(root, text=f"Tip: Focus QQ chat box. Use '{TOGGLE_HOTKEY.replace('+', ' + ')}' to toggle Start/Stop, '{STOP_HOTKEY}' to stop.", font=(None, 9)) \
+            .grid(row=4, column=0, columnspan=2, padx=10, pady=5)
 
-    # Start QQ monitoring thread
-    threading.Thread(target=monitor_qq, daemon=True).start()
+        # Start QQ monitoring thread
+        threading.Thread(target=monitor_qq, daemon=True).start()
 
-    # Set the closing protocol for the GUI window
-    root.protocol("WM_DELETE_WINDOW", on_closing)
+        # Set the closing protocol for the GUI window
+        root.protocol("WM_DELETE_WINDOW", on_closing)
 
-    log_info("GUI initialized.")
-    root.mainloop() # Start the Tkinter event loop
+        log_info("GUI initialized.")
+        root.mainloop() # Start the Tkinter event loop
+        # When root.mainloop() finishes (e.g., after on_closing calls gui_window.destroy()),
+        # the code continues here. Perform final cleanup if not already done.
+        # on_closing already calls perform_cleanup, so this check avoids redundant calls.
+        if log_fp: # If log_fp is still open, it means cleanup wasn't handled by on_closing
+            perform_cleanup("GUI mode exited naturally")
 
+    except Exception as e:
+        # Catch exceptions that occur *before* or *outside* _cli_main or root.mainloop
+        # excepthook should generally catch these, but this is a fail-safe.
+        log_error(f"Unhandled error in main program block: {e}")
+        perform_cleanup(f"Unhandled error in main program block: {e}")
+        sys.exit(1) # Ensure exit for unexpected errors
