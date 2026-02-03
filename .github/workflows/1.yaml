@@ -54,7 +54,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # 直接发布 GUI.exe，不进行重命名
-          files: GUI.exe
+          files: D:\a\QQ_qiuck_update\QQ_qiuck_update\GUI.dist\GUI.exe
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           name: ${{ github.event.inputs.release_title || github.ref_name }}
           body: ${{ github.event.inputs.release_body || '通过推送标签自动构建发布' }}
