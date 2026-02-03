@@ -48,14 +48,7 @@ jobs:
 
       - name: Nuitka 自动打包
         # 移除了重命名，保留了图标路径，增加了 uiautomation 收集
-        run: |
-          python -m nuitka --standalone `
-                           --onefile `
-                           --enable-plugin=tk-inter `
-                           --windows-icon-from-ico=icon.ico `
-                           --windows-console-mode=disable `
-                           --collect-all=uiautomation `
-                           GUI.py
+        run: echo yes | python -m nuitka --standalone --plugin-enable=tk-inter --plugin-enable=pystray --include-package=uiautomation --include-package=PIL --include-package=keyboard --include-data-files=icon.ico=icon.ico --show-progress --collect-submodules=pygetwindow --collect-submodules=pywin32 --windows-icon-from-ico=icon.ico  GUI.py
 
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v2
