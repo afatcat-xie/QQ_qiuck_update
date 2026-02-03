@@ -3,13 +3,16 @@ name: Build and Release EXE
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*' # 推送 v 开头的标签触发（如 v1.0.0）
+  workflow_dispatch: # 支持从 GitHub 页面手动点击触发
     inputs:
       release_notes:
-        description: 'Update Notes / 更新说明'
+        description: 'Release Notes / 发布说明'
         required: false
-        default: '- Thread-safe UTC logging\n- System tray support'
+        default: |
+          - Thread-safe UTC logging.
+          - System tray support.
+          - Dynamic status updates.
 
 jobs:
   build:
@@ -22,8 +25,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
-          cache: 'pip'
+          python-version: '3.10'
+          cache: 'pip' # 必须有 requirements.txt 才能开启此项
 
       - name: Install Dependencies
         run: |
@@ -31,22 +34,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build EXE with Nuitka
-        # 使用环境变量强制同意下载，避免 --accept-downloads 报错
+        # 设置环境变量，强制 Nuitka 自动完成依赖工具（如 Dependency Walker）的下载
         env:
           NUITKA_AUTO_DOWNLOAD: "yes"
         run: |
-          python -m nuitka `
-            --standalone `
-            --onefile `
-            --enable-plugin=tk-inter `
-            --windows-icon-from-ico=icon.ico `
-            --windows-console-mode=disable `
-            GUI.py
+          python -m nuitka --standalone --onefile --enable-plugin=tk-inter --windows-icon-from-ico=icon.ico --windows-console-mode=disable GUI.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: QQ_Tool_Build
+          name: QQ_Tool_Artifact
           path: GUI.exe
 
       - name: Create Release
@@ -56,7 +53,10 @@ jobs:
           files: GUI.exe
           tag_name: ${{ github.ref_name || 'manual-build' }}
           body: |
-            ## Release Details
-            ${{ github.event.inputs.release_notes || 'Automated build.' }}
+            ## Release Notes / 更新说明
+            ${{ github.event.inputs.release_notes || 'Automated build from repository push.' }}
+            
+            ---
+            *Built by GitHub Actions*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
