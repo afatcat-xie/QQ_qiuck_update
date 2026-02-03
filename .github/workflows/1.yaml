@@ -38,7 +38,7 @@ jobs:
         env:
           NUITKA_AUTO_DOWNLOAD: "yes"
         run: |
-          python -m nuitka --standalone --onefile --enable-plugin=tk-inter --windows-icon-from-ico=icon.ico --windows-console-mode=disable GUI.py
+          echo "yes" | python -m nuitka --standalone --onefile --enable-plugin=tk-inter --windows-icon-from-ico=icon.ico --windows-console-mode=disable GUI.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
