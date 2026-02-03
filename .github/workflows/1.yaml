@@ -3,16 +3,13 @@ name: Build and Release EXE
 on:
   push:
     tags:
-      - 'v*' # 推送 v 开头的标签触发（如 v1.0.0）
-  workflow_dispatch: # 支持手动触发并填入发布说明
+      - 'v*'
+  workflow_dispatch:
     inputs:
       release_notes:
-        description: 'Enter the release description / 输入发布说明'
+        description: 'Update Notes / 更新说明'
         required: false
-        default: |
-          - Thread-safe UTC logging.
-          - System tray support.
-          - Dynamic status updates.
+        default: '- Thread-safe UTC logging\n- System tray support'
 
 jobs:
   build:
@@ -25,8 +22,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip' # 需要根目录有 requirements.txt
+          python-version: '3.8'
+          cache: 'pip'
 
       - name: Install Dependencies
         run: |
@@ -34,8 +31,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build EXE with Nuitka
-        # --accept-downloads: 自动同意下载 Dependency Walker 等必要工具
-        # --windows-console-mode=disable: 禁用控制台窗口
+        # 使用环境变量强制同意下载，避免 --accept-downloads 报错
+        env:
+          NUITKA_AUTO_DOWNLOAD: "yes"
         run: |
           python -m nuitka `
             --standalone `
@@ -43,7 +41,6 @@ jobs:
             --enable-plugin=tk-inter `
             --windows-icon-from-ico=icon.ico `
             --windows-console-mode=disable `
-            --accept-downloads `
             GUI.py
 
       - name: Upload Artifact
@@ -59,7 +56,7 @@ jobs:
           files: GUI.exe
           tag_name: ${{ github.ref_name || 'manual-build' }}
           body: |
-            ## Release Notes / 更新说明
-            ${{ github.event.inputs.release_notes || 'Automated build from tag push.' }}
+            ## Release Details
+            ${{ github.event.inputs.release_notes || 'Automated build.' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
