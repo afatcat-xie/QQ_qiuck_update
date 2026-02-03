@@ -1,14 +1,13 @@
-# .github/workflows/build.yml
 name: Build and Release EXE
 
 on:
   push:
     tags:
-      - 'v*' # Trigger build when a version tag is pushed (e.g., v1.0.0)
-  workflow_dispatch: # Allow manual triggering with custom inputs
+      - 'v*' # 推送 v 开头的标签触发（如 v1.0.0）
+  workflow_dispatch: # 支持手动触发并填入发布说明
     inputs:
       release_notes:
-        description: 'Enter the release description/change log'
+        description: 'Enter the release description / 输入发布说明'
         required: false
         default: |
           - Thread-safe UTC logging.
@@ -21,52 +20,46 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        # Checkout the source code
         uses: actions/checkout@v4
 
       - name: Set up Python
-        # Initialize Python environment based on README specs
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
+          cache: 'pip' # 需要根目录有 requirements.txt
 
       - name: Install Dependencies
-        # Install libraries required for GUI, Tray, and Building
         run: |
           python -m pip install --upgrade pip
-          pip install keyboard Pillow pystray nuitka
+          pip install -r requirements.txt
 
       - name: Build EXE with Nuitka
-        # Build standalone executable as defined in README section 5
+        # --accept-downloads: 自动同意下载 Dependency Walker 等必要工具
+        # --windows-console-mode=disable: 禁用控制台窗口
         run: |
           python -m nuitka `
             --standalone `
             --onefile `
             --enable-plugin=tk-inter `
             --windows-icon-from-ico=icon.ico `
-            --windows-disable-console `
+            --windows-console-mode=disable `
+            --accept-downloads `
             GUI.py
 
       - name: Upload Artifact
-        # Store the EXE as an artifact for 90 days
         uses: actions/upload-artifact@v4
         with:
-          name: QQ_Quick_Update_Tool
+          name: QQ_Tool_Build
           path: GUI.exe
 
       - name: Create Release
-        # Generate formal GitHub Release with user-defined descriptions
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           files: GUI.exe
           tag_name: ${{ github.ref_name || 'manual-build' }}
           body: |
-            ## Release Notes
+            ## Release Notes / 更新说明
             ${{ github.event.inputs.release_notes || 'Automated build from tag push.' }}
-            
-            ---
-            *Built automatically via GitHub Actions.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
