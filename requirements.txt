@@ -1,4 +1,12 @@
+# 键盘模拟与全局热键
 keyboard
-Pillow
+
+# 系统托盘图标支持
 pystray
-nuitka
+Pillow
+
+# Windows UI 自动化（核心引擎）
+uiautomation
+
+# Nuitka 打包建议安装（提升兼容性）
+zstandard

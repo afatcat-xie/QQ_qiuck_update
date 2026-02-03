@@ -1,342 +1,278 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# QQ_quick_update_gui.py by afatcat-xie
 
 import random
 import string
 import threading
 import time as _time
-import ctypes
-import ctypes.wintypes
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import keyboard
 import os
 import configparser
-import sys
-from datetime import datetime, timezone
-import traceback
-import signal
-from PIL import Image
+from datetime import datetime
+from PIL import Image, ImageDraw
 import pystray
+import uiautomation as auto
 
-# ---------- Global variables ----------
+# ---------- 全局变量 ----------
 running = False
 worker_thread = None
 time_interval = 1.0          
-qq_exists = False            
-lock = threading.Lock()      
-log_lock = threading.Lock()  
-run_duration = None          
-start_time = None            
+input_length = 10            
 send_with_ctrl = False       
 root = None                  
+status_label = None
+log_display = None  
 tray_icon = None             
 
-# ---------- File & Path Config ----------
 INI_FILE = "qq_config.ini"
-ICON_FILE = "icon.ico"  
 LOG_DIR = "logs"
 
-# Dynamically generate log filename based on UTC time
-# Format: logs/qq_monitor_YYYYMMDD_HHMMSS_UTC.log
-utc_now = datetime.now(timezone.utc)
-log_filename = f"qq_monitor_{utc_now.strftime('%Y%m%d_%H%M%S')}_UTC.log"
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+# 日志初始化
+log_filename = f"qq_monitor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 LOG_FILE = os.path.join(LOG_DIR, log_filename)
-
-TOGGLE_HOTKEY = "ctrl+alt+q"
-STOP_HOTKEY = "f8"
-
-log_fp = None
+log_fp = open(LOG_FILE, "a", encoding="utf-8")
 
 def log_info(message):
-    """
-    Thread-safe logging: ensures messages are line-broken and conflict-free 
-    under multi-threading.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    formatted_message = f"[{timestamp}] [INFO] {message}"
+    """线程安全的日志记录，支持文件、GUI和控制台输出"""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_message = f"[{timestamp}] {message}"
     
-    with log_lock:
-        print(formatted_message)
-        if log_fp:
-            log_fp.write(formatted_message + "\n")
-            log_fp.flush()
-
-def log_error(message):
-    """
-    Thread-safe error logging: ensures error messages are written atomically 
-    without interleaving.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    formatted_message = f"[{timestamp}] [ERROR] {message}"
-    
-    with log_lock:
-        print(formatted_message, file=sys.stderr)
-        if log_fp:
-            log_fp.write(formatted_message + "\n")
-            log_fp.flush()
-
-def perform_cleanup(reason="Unknown"):
-    """
-    Closes resources and handles final logging before exit.
-    """
-    global log_fp
-    log_info(f"Program exiting. Reason: {reason}")
     if log_fp:
-        log_fp.close()
-        log_fp = None
+        log_fp.write(f"[{full_timestamp}] [LOG] {message}\n")
+        log_fp.flush()
+    
+    if log_display and root:
+        try:
+            # 使用 after 确保在主线程更新 UI
+            root.after(0, lambda: (
+                log_display.insert(tk.END, formatted_message + "\n"),
+                log_display.see(tk.END)
+            ))
+        except: pass
+    print(formatted_message)
 
-def quit_app():
-    """
-    Completely exit the program (Graceful exit).
-    """
-    global running, tray_icon
-    running = False
-    if tray_icon:
-        tray_icon.stop()
-    perform_cleanup("User requested exit")
-    os._exit(0)
+def update_status(text, color):
+    """更新 GUI 上的状态标签"""
+    if root and status_label:
+        root.after(0, lambda: status_label.config(text=f"状态: {text}", fg=color))
 
-def show_window(icon=None, item=None):
-    """
-    Restore window from tray.
-    """
-    if root:
-        root.after(0, root.deiconify)
-        root.after(0, root.lift)
-        root.after(0, root.focus_force)
+# ---------- 核心检测与自动发送逻辑 ----------
 
-def hide_to_tray():
-    """
-    Hide the window to the system tray.
-    """
+def worker_logic():
+    global running
+    # 仅允许 EditControl，排除了可能导致死循环或误触发的 DocumentControl
+    VALID_CONTROL_TYPES = ['EditControl']
+    
+    with auto.UIAutomationInitializerInThread(debug=False):
+        log_info("核心监控引擎已启动...")
+        while running:
+            try:
+                el = auto.GetFocusedControl()
+                
+                if not el:
+                    update_status("等待有效焦点", "orange")
+                else:
+                    ctrl_type = el.ControlTypeName
+                    ctrl_name = el.Name if el.Name else "无名称"
+                    window = el.GetTopLevelControl()
+                    win_title = window.Name if window else "未知窗口"
+
+                    info_str = f"焦点窗口: [{win_title}] | 控件: [{ctrl_type}]"
+                    print(info_str)
+                    if win_title and "QQ" in win_title and "\\" not in win_title:
+                        # 明确禁止在文档展示区（通常是聊天记录区）尝试输入
+    
+                        if ctrl_type == 'DocumentControl':
+                            update_status("禁止在文档区输入", "red")
+                        elif ctrl_type in VALID_CONTROL_TYPES:
+                            # 模拟输入逻辑
+                            text_to_send = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(input_length))
+                            keyboard.write(text_to_send)
+                            _time.sleep(0.1) # 缓冲，防止发送过快
+                            
+                            if send_with_ctrl:
+                                keyboard.press_and_release('ctrl+enter')
+                                print('ctrl+enter')
+                            else:
+                                keyboard.press_and_release('enter')
+                                print('enter')
+                            
+                            log_info(f"【发送成功】窗口: {win_title} | 内容: {text_to_send}")
+                            update_status("运行中 (发送成功)", "green")
+                        else:
+                            update_status("无效输入区域", "orange")
+                    else:
+                        update_status("非 QQ 窗口", "orange")
+
+            except Exception as e:
+                log_info(f"【循环异常】: {str(e)}")
+            
+            _time.sleep(max(0.1, time_interval))
+        log_info("核心监控引擎已安全停止。")
+
+# ---------- 托盘与配置功能 ----------
+
+def create_dummy_icon():
+    """创建一个简单的托盘图标（如果找不到外部图标文件）"""
+    width, height = 64, 64
+    image = Image.new('RGB', (width, height), color=(0, 120, 215)) # 蓝色背景
+    dc = ImageDraw.Draw(image)
+    dc.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+    return image
+
+def on_tray_quit(icon, item):
+    icon.stop()
+    if log_fp: log_fp.close()
+    root.after(0, root.destroy)
+
+def show_window(icon, item):
+    icon.stop()
+    root.after(0, root.deiconify)
+
+def withdraw_window():
+    """点击窗口关闭按钮时隐藏到托盘"""
     root.withdraw()
-    log_info("Window minimized to tray.")
-
-def load_icon_image():
-    """
-    Load local ICO icon with a fallback color square if missing.
-    """
-    try:
-        if os.path.exists(ICON_FILE):
-            return Image.open(ICON_FILE)
-        else:
-            return Image.new('RGB', (64, 64), (0, 120, 215)) # Default Blue
-    except Exception:
-        return Image.new('RGB', (64, 64), (200, 0, 0)) # Error Red
-
-def setup_tray():
-    """
-    System tray initialization and event loop.
-    """
     global tray_icon
-    menu = pystray.Menu(
-        pystray.MenuItem('Show Window', show_window, default=True),
-        pystray.MenuItem('Exit Program', quit_app)
+    image = create_dummy_icon()
+    if os.path.exists("icon.ico"):
+        try: image = Image.open("icon.ico")
+        except: pass
+    
+    menu = (
+        pystray.MenuItem('显示窗口', show_window), 
+        pystray.MenuItem('退出程序', on_tray_quit)
     )
-    tray_icon = pystray.Icon("QQTool", load_icon_image(), "QQ Quick Update", menu)
-    tray_icon.run()
-
-def handle_signal(signum, frame):
-    quit_app()
-
-signal.signal(signal.SIGINT, handle_signal)
-signal.signal(signal.SIGTERM, handle_signal)
-
-def handle_exception(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-        return
-    err_detail = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    log_error(f"Unhandled exception occurred:\n{err_detail}")
-    quit_app()
-
-sys.excepthook = handle_exception
+    tray_icon = pystray.Icon("QQTool", image, "QQ自动发送工具", menu)
+    threading.Thread(target=tray_icon.run, daemon=True).start()
 
 def load_config():
-    global time_interval, run_duration, send_with_ctrl
+    global time_interval, send_with_ctrl, input_length
     config = configparser.ConfigParser()
     if os.path.exists(INI_FILE):
         try:
             config.read(INI_FILE)
             if 'Settings' in config:
                 time_interval = config.getfloat('Settings', 'interval', fallback=1.0)
-                duration_str = config.get('Settings', 'duration', fallback='unlimited')
+                input_length = config.getint('Settings', 'input_length', fallback=10)
                 send_with_ctrl = config.getboolean('Settings', 'send_with_ctrl', fallback=False)
-                run_duration = None if duration_str.lower() in ['0', 'unlimited', 'inf'] else float(duration_str)
-            log_info("Configuration loaded.")
-        except Exception as e:
-            log_error(f"Error loading config: {e}")
+        except: pass
 
 def save_config():
     config = configparser.ConfigParser()
     config['Settings'] = {
         'interval': str(time_interval),
-        'duration': 'unlimited' if run_duration is None else str(run_duration),
+        'input_length': str(input_length),
         'send_with_ctrl': str(send_with_ctrl)
     }
-    try:
-        with open(INI_FILE, 'w') as configfile:
-            config.write(configfile)
-    except Exception as e:
-        log_error(f"Error saving config: {e}")
+    with open(INI_FILE, 'w') as f: config.write(f)
 
-def is_qq_running():
-    process_name = "QQ.exe"
-    TH32CS_SNAPPROCESS = 0x00000002
-    class PROCESSENTRY32(ctypes.Structure):
-        _fields_ = [("dwSize", ctypes.wintypes.DWORD), ("cntUsage", ctypes.wintypes.DWORD),
-                    ("th32ProcessID", ctypes.wintypes.DWORD), ("th32DefaultHeapID", ctypes.POINTER(ctypes.wintypes.ULONG)),
-                    ("th32ModuleID", ctypes.wintypes.DWORD), ("cntThreads", ctypes.wintypes.DWORD),
-                    ("th32ParentProcessID", ctypes.wintypes.DWORD), ("pcPriClassBase", ctypes.wintypes.LONG),
-                    ("dwFlags", ctypes.wintypes.DWORD), ("szExeFile", ctypes.c_char * 260)]
-    snapshot = ctypes.windll.kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if snapshot == -1: return False
-    try:
-        pe = PROCESSENTRY32()
-        pe.dwSize = ctypes.sizeof(PROCESSENTRY32)
-        if ctypes.windll.kernel32.Process32First(snapshot, ctypes.byref(pe)):
-            while True:
-                if pe.szExeFile.decode('gbk').lower() == process_name.lower(): return True
-                if not ctypes.windll.kernel32.Process32Next(snapshot, ctypes.byref(pe)): break
-    finally:
-        ctypes.windll.kernel32.CloseHandle(snapshot)
-    return False
-
-def monitor_qq():
-    global qq_exists
-    while True:
-        exists = is_qq_running()
-        with lock: qq_exists = exists
-        _time.sleep(2)
-
-def generate_random_string(length=8):
-    return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
-
-def worker():
-    global running, start_time
-    start_time = _time.time()
-    send_key = 'ctrl+enter' if send_with_ctrl else 'enter'
-    try:
-        while running:
-            with lock:
-                if not qq_exists:
-                    stop_sending("QQ closed unexpectedly")
-                    break
-            if run_duration and (_time.time() - start_time >= run_duration):
-                stop_sending("Duration reached")
-                break
-            
-            keyboard.write(generate_random_string())
-            keyboard.press_and_release(send_key)
-            _time.sleep(time_interval)
-    except Exception as e:
-        log_error(f"Worker execution error: {e}")
-        stop_sending("Worker Thread Exception")
-
-def start_sending():
-    """
-    Attempts to start the task. Updates status automatically on failure.
-    """
+def toggle_worker():
+    """切换监控开启/关闭状态"""
     global running, worker_thread
-    if not running:
-        with lock:
-            if not qq_exists:
-                stop_sending("QQ not running")
-                return
-        
-        running = True
-        worker_thread = threading.Thread(target=worker, daemon=True)
-        worker_thread.start()
-        if 'status_label' in globals(): 
-            status_label.config(text="Status: Running", fg="green")
-        log_info("Sending task started.")
-
-def stop_sending(reason="User stopped"):
-    """
-    Stops task and updates the GUI with the specific reason.
-    """
-    global running
-    if running or 'status_label' in globals():
+    if running:
         running = False
-        display_text = f"Status: Stopped ({reason})"
-        if 'status_label' in globals():
-            # Use Red for failures, Blue for normal stops
-            status_color = "red" if "not" in reason.lower() or "unexpected" in reason.lower() else "blue"
-            status_label.config(text=display_text, fg=status_color)
-        log_info(f"Sending task stopped. Reason: {reason}")
+        update_status("已停止", "blue")
+        log_info("已停止监控")
+    else:
+        running = True
+        worker_thread = threading.Thread(target=worker_logic, daemon=True)
+        worker_thread.start()
+        update_status("运行中", "green")
+        log_info("已启动监控")
 
-def toggle_sending():
-    stop_sending() if running else start_sending()
+def clear_logs():
+    if log_display:
+        log_display.delete('1.0', tk.END)
+        log_info("日志界面已清空")
 
-keyboard.add_hotkey(TOGGLE_HOTKEY, toggle_sending)
-keyboard.add_hotkey(STOP_HOTKEY, lambda: stop_sending("F8 hotkey"))
+# ---------- GUI 界面构建 ----------
 
-def start_gui():
-    global status_label, log_fp, send_with_ctrl, root
-    
-    # Ensure log directory exists
-    if not os.path.exists(LOG_DIR):
-        os.makedirs(LOG_DIR)
-
-    # Open the unique UTC log file in append mode
-    try:
-        log_fp = open(LOG_FILE, "a", encoding="utf-8")
-    except Exception as e:
-        print(f"CRITICAL: Failed to open log file {LOG_FILE}: {e}")
-    
+def run_gui():
+    global root, status_label, log_display
     load_config()
-
-    root = tk.Tk()
-    root.title("QQ Quick Update Tool")
     
-    if os.path.exists(ICON_FILE):
-        try: root.iconbitmap(ICON_FILE)
-        except: pass
+    root = tk.Tk()
+    root.title("QQ 自动发送监控工具")
+    root.geometry("800x800")
+    root.protocol('WM_DELETE_WINDOW', withdraw_window)
 
-    tk.Label(root, text="Interval (s):").grid(row=0, column=0, padx=10, pady=5, sticky="e")
+    # 样式配置
+    style = ttk.Style()
+    style.configure("TButton", padding=5)
+
+    main_frame = ttk.Frame(root, padding="15")
+    main_frame.pack(fill=tk.BOTH, expand=True)
+
+    # --- 设置区域 ---
+    settings_label = ttk.Label(main_frame, text="参数设置", font=("微软雅黑", 10, "bold"))
+    settings_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+
+    ttk.Label(main_frame, text="发送间隔 (秒):").grid(row=1, column=0, sticky=tk.W, pady=5)
     interval_var = tk.DoubleVar(value=time_interval)
-    ttk.Spinbox(root, from_=0.1, to=3600.0, increment=0.1, textvariable=interval_var, width=10).grid(row=0, column=1, padx=10, pady=5)
+    ttk.Entry(main_frame, textvariable=interval_var, width=15).grid(row=1, column=1, sticky=tk.W)
 
-    tk.Label(root, text="Duration (s, 0=inf):").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-    duration_var = tk.StringVar(value='unlimited' if run_duration is None else str(run_duration))
-    ttk.Entry(root, textvariable=duration_var, width=12).grid(row=1, column=1, padx=10, pady=5)
+    ttk.Label(main_frame, text="随机字符位数:").grid(row=2, column=0, sticky=tk.W, pady=5)
+    length_var = tk.IntVar(value=input_length)
+    ttk.Entry(main_frame, textvariable=length_var, width=15).grid(row=2, column=1, sticky=tk.W)
 
     send_method_var = tk.BooleanVar(value=send_with_ctrl)
-    def update_send_method():
-        global send_with_ctrl
-        send_with_ctrl = send_method_var.get()
-        log_info(f"Mode switched: {'Ctrl+Enter' if send_with_ctrl else 'Enter'}")
-        save_config()
+    ttk.Checkbutton(main_frame, text="使用 Ctrl+Enter 发送 (QQ设置需匹配)", variable=send_method_var).grid(row=3, column=0, columnspan=2, pady=5, sticky=tk.W)
 
-    ttk.Checkbutton(root, text="Use Ctrl+Enter (Simultaneous)", variable=send_method_var, command=update_send_method).grid(row=2, column=0, columnspan=2, pady=5)
-
-    def apply_settings():
-        global time_interval, run_duration
+    def apply():
+        global time_interval, input_length, send_with_ctrl
         try:
             time_interval = interval_var.get()
-            d_val = duration_var.get().strip()
-            run_duration = None if d_val.lower() in ['0', 'unlimited', 'inf'] else float(d_val)
+            input_length = length_var.get()
+            send_with_ctrl = send_method_var.get()
             save_config()
-            messagebox.showinfo("Success", "Settings applied.")
+            log_info("配置已成功应用并保存至本地")
+            messagebox.showinfo("成功", "配置已应用")
         except: 
-            messagebox.showerror("Error", "Invalid configuration.")
+            messagebox.showerror("错误", "请输入有效的数值")
 
-    ttk.Button(root, text="Apply Settings", command=apply_settings).grid(row=3, column=0, columnspan=2, pady=10)
-    status_label = tk.Label(root, text="Status: Stopped", fg="blue")
-    status_label.grid(row=4, column=0, columnspan=2, pady=5)
+    ttk.Button(main_frame, text="保存并应用配置", command=apply).grid(row=4, column=0, columnspan=2, pady=10)
+
+    # --- 状态与日志 ---
+    ttk.Separator(main_frame, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky="ew", pady=10)
+
+    status_label = tk.Label(main_frame, text="状态: 已停止", font=("微软雅黑", 11, "bold"), fg="blue")
+    status_label.grid(row=6, column=0, columnspan=2, pady=5)
+
+    log_header_frame = ttk.Frame(main_frame)
+    log_header_frame.grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(10, 2))
+    ttk.Label(log_header_frame, text="实时运行日志:").pack(side=tk.LEFT)
+    ttk.Button(log_header_frame, text="清空日志", command=clear_logs, width=10).pack(side=tk.LEFT, padx=10)
+
+    log_display = scrolledtext.ScrolledText(main_frame, height=18, width=70, font=("Consolas", 9), bg="#f8f8f8")
+    log_display.grid(row=8, column=0, columnspan=2, sticky=tk.NSEW)
+
+    # --- 快捷键提示 ---
+    footer_label = ttk.Label(main_frame, text="全局快捷键: Ctrl + Alt + Q (启动/停止)", foreground="gray")
+    footer_label.grid(row=9, column=0, columnspan=2, pady=15)
+
+    # 注册快捷键
+    try:
+        keyboard.add_hotkey("ctrl+alt+q", toggle_worker)
+        log_info("热键 Ctrl+Alt+Q 注册成功")
+    except Exception as e:
+        log_info(f"热键注册失败: {e}")
     
-    tk.Label(root, text=f"Hotkeys: {TOGGLE_HOTKEY} Toggle | {STOP_HOTKEY} Stop", font=(None, 8)).grid(row=5, column=0, columnspan=2, pady=5)
-
-    threading.Thread(target=monitor_qq, daemon=True).start()
-    threading.Thread(target=setup_tray, daemon=True).start()
-
-    # Intercept close button to hide to tray
-    root.protocol("WM_DELETE_WINDOW", hide_to_tray)
-
-    log_info(f"New session started. Log file: {log_filename}")
+    log_info("程序启动完成，等待操作。")
+    
+    # 窗口居中
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
+    y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
+    root.geometry(f"+{x}+{y}")
+    
     root.mainloop()
 
 if __name__ == "__main__":
-    start_gui()
+    run_gui()
