@@ -1,0 +1,206 @@
+INFO         | Android emulator version 35.6.11.0 (build_id 13610412) (CL:N/A)
+INFO         | Graphics backend: gfxstream
+INFO         | Found systemPath D:\sdk\system-images\android-35\google_apis\x86_64\
+INFO         | IPv4 server found: 192.168.31.1
+INFO         | Ignore IPv6 address: 801e:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 801e:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 801e:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 1826:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 1826:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 1826:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 835:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 835:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 835:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 383d:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 383d:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 383d:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 6845:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 6845:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 6845:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 504b:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 504b:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: 504b:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: f052:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: f052:3937:7f02:0:801e:3937:7f02:0
+INFO         | Ignore IPv6 address: f052:3937:7f02:0:801e:3937:7f02:0
+##############################################################################
+##                        WARNING - ACTION REQUIRED                         ##
+##  Consider using the '-metrics-collection' flag to help improve the       ##
+##  emulator by sending anonymized usage data. Or use the '-no-metrics'     ##
+##  flag to bypass this warning and turn off the metrics collection.        ##
+##  In a future release this warning will turn into a one-time blocking     ##
+##  prompt to ask for explicit user input regarding metrics collection.     ##
+##                                                                          ##
+##  Please see '-help-metrics-collection' for more details. You can use     ##
+##  '-metrics-to-file' or '-metrics-to-console' flags to see what type of   ##
+##  data is being collected by emulator as part of usage statistics.        ##
+##############################################################################
+INFO         | Guest GLES Driver: Auto (ext controls)
+library_mode host gpu mode host
+INFO         | emuglConfig_get_vulkan_hardware_gpu_support_info: Found physical GPU 'NVIDIA GeForce GT 730', type: VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, apiVersion: 1.2.175, driverVersion: 475.14
+
+INFO         | emuglConfig_get_vulkan_hardware_gpu_support_info: Found physical GPU 'Intel(R) UHD Graphics 750', type: VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, apiVersion: 1.4.323, driverVersion: 0.405.2930
+
+INFO         | GPU device local memory = 8054MB
+INFO         | Checking system compatibility:
+INFO         |   Checking: hasCompatibleHypervisor
+INFO         |      Ok: Hypervisor compatibility to run avd: `Pixel_9` are met
+INFO         |   Checking: hasSufficientSystem
+INFO         |      Ok: System requirements to run avd: `Pixel_9` are met
+INFO         |   Checking: hasSufficientHwGpu
+INFO         |      Ok: Hardware GPU requirements to run avd: `Pixel_9` are passed
+INFO         |   Checking: hasSufficientDiskSpace
+INFO         |      Ok: Disk space requirements to run avd: `Pixel_9` are met
+INFO         | Critical: Failed to load opengl32sw (鎵句笉鍒版寚瀹氱殑妯″潡銆? (:0, )
+INFO         | Warning: Software OpenGL failed. Falling back to system OpenGL. (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_btn_xr_environment_living_room_day_clicked() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_btn_xr_environment_living_room_night_clicked() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_new_posture_requested(int) (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_dismiss_posture_selection_dialog() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_new_resizable_requested(PresetEmulatorSizeType) (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_dismiss_resizable_dialog() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_xr_environment_mode_changed(int) (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_dismiss_xr_environment_mode_dialog() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_xr_input_mode_changed(int) (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_dismiss_xr_input_mode_dialog() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_sleep_timer_done() (:0, )
+INFO         | Warning: QMetaObject::connectSlotsByName: No matching signal for on_unfold_timer_done() (:0, )
+ERROR        | Unable to connect to adb daemon on port: 5037
+INFO         | Storing crashdata in: D:\Temp\\AndroidEmulator\emu-crash-35.6.11.db, detection is enabled for process: 9996
+INFO         | Initializing hardware OpenGLES emulation support
+I0203 10:48:04.952441   16884 opengles.cpp:307] android_startOpenglesRenderer: gpu info
+I0203 10:48:04.952598   16884 opengles.cpp:308] GPU #1
+  Make: 10de
+  Model: NVIDIA GeForce GT 730
+  Device ID: 1287
+
+I0203 10:48:04.953261   16884 HealthMonitor.cpp:275] HealthMonitor disabled.
+I0203 10:48:04.953742   16884 SharedLibrary.cpp:64] SharedLibrary::open for [vulkan-1.dll]
+I0203 10:48:04.953926   16884 SharedLibrary.cpp:76] SharedLibrary::open for [vulkan-1.dll]: not found in map, open for the first time
+I0203 10:48:04.954213   16884 SharedLibrary.cpp:94] SharedLibrary::open for [vulkan-1.dll] (win32): call LoadLibrary
+I0203 10:48:04.954467   16884 SharedLibrary.cpp:116] SharedLibrary::open succeeded for [vulkan-1.dll]. File name: [C:\Windows\SYSTEM32\vulkan-1.dll]
+I0203 10:48:04.954716   16884 VulkanDispatch.cpp:133] Added library: vulkan-1.dll
+I0203 10:48:04.977504   16884 VkCommonOperations.cpp:1361] Selecting Vulkan device: Intel(R) UHD Graphics 750, Version: 1.4.323
+I0203 10:48:05.000408   16884 VkDecoderGlobalState.cpp:206] Disabling sparse binding feature support
+I0203 10:48:05.000532   16884 SharedLibrary.cpp:76] SharedLibrary::open for [opengl32.dll]: not found in map, open for the first time
+I0203 10:48:05.001465   16884 SharedLibrary.cpp:94] SharedLibrary::open for [opengl32.dll] (win32): call LoadLibrary
+I0203 10:48:05.001733   16884 SharedLibrary.cpp:116] SharedLibrary::open succeeded for [opengl32.dll]. File name: [C:\Windows\SYSTEM32\opengl32.DLL]
+I0203 10:48:05.034880   16884 SharedLibrary.cpp:76] SharedLibrary::open for [libshadertranslator.dll]: not found in map, open for the first time
+I0203 10:48:05.034949   16884 SharedLibrary.cpp:94] SharedLibrary::open for [libshadertranslator.dll] (win32): call LoadLibrary
+I0203 10:48:05.036364   16884 SharedLibrary.cpp:116] SharedLibrary::open succeeded for [libshadertranslator.dll]. File name: [D:\sdk\emulator\lib64\libshadertranslator.dll]
+I0203 10:48:05.038177   16884 VkCommonOperations.cpp:1669] Initializing VkEmulation features:
+I0203 10:48:05.038246   16884 VkCommonOperations.cpp:1670]     glInteropSupported: false
+I0203 10:48:05.038442   16884 VkCommonOperations.cpp:1671]     useDeferredCommands: true
+I0203 10:48:05.038911   16884 VkCommonOperations.cpp:1673]     createResourceWithRequirements: true
+I0203 10:48:05.040280   16884 VkCommonOperations.cpp:1675]     useVulkanComposition: false
+I0203 10:48:05.040462   16884 VkCommonOperations.cpp:1677]     useVulkanNativeSwapchain: false
+I0203 10:48:05.040633   16884 VkCommonOperations.cpp:1678]     enable guestRenderDoc: false
+I0203 10:48:05.040803   16884 VkCommonOperations.cpp:1680]     ASTC LDR emulation mode: Gpu
+I0203 10:48:05.040973   16884 VkCommonOperations.cpp:1682]     enable ETC2 emulation: true
+I0203 10:48:05.041222   16884 VkCommonOperations.cpp:1684]     enable Ycbcr emulation: false
+I0203 10:48:05.041388   16884 VkCommonOperations.cpp:1685]     guestVulkanOnly: false
+I0203 10:48:05.041413   16884 VkCommonOperations.cpp:1687]     useDedicatedAllocations: false
+I0203 10:48:05.041735   16884 FrameBuffer.cpp:460] Graphics Adapter Vendor Google (NVIDIA Corporation)
+I0203 10:48:05.041797   16884 FrameBuffer.cpp:461] Graphics Adapter Android Emulator OpenGL ES Translator (NVIDIA GeForce GT 730/PCIe/SSE2)
+I0203 10:48:05.042017   16884 FrameBuffer.cpp:462] Graphics API Version OpenGL ES 3.0 (4.5.0 NVIDIA 475.14)
+I0203 10:48:05.042196   16884 FrameBuffer.cpp:463] Graphics API Extensions GL_OES_EGL_sync GL_OES_EGL_image GL_OES_EGL_image_external GL_OES_depth24 GL_OES_depth32 GL_OES_element_index_uint GL_OES_texture_float GL_OES_texture_float_linear GL_OES_compressed_paletted_texture GL_OES_compressed_ETC1_RGB8_texture GL_OES_depth_texture GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_packed_depth_stencil GL_OES_vertex_half_float GL_OES_texture_npot GL_OES_rgb8_rgba8 GL_OVR_multiview2 GL_EXT_multiview_texture_multisample GL_EXT_color_buffer_float GL_EXT_color_buffer_half_float GL_EXT_texture_format_BGRA8888 GL_APPLE_texture_format_BGRA8888 GL_EXT_texture_buffer
+I0203 10:48:05.042399   16884 FrameBuffer.cpp:464] Graphics Device Extensions N/A
+INFO         | Sending adb public key [QAAAAHVjR5sj6w1w5KmxysMgi+6AL5nUJwVu6TBRtzPXQ+xT+5lnDJgb7rjDy22mOCELdmG/DpUYuaP5l+XolPJQdUcGRQ824ei81xbl0p/Bi6ynTcJ9fKYclLzek4hH99lUUE/RYrLmFmVgnlHrDf3VlEtEl1Qu8g0MgHmqevLDqfl11FqdSmNSkZCpX/QGQJUcVg9dNKWeswBnkvlV0wMjWLRzblgHdIZnzDy3fpS7QmqYbGOS9TijG8nSm6tEOr8Ite277fx0U4qaM088MvXJF2MInHfEWR7gZJNs0NAzeAuiXvmFHa3xTL4C7HWXbc3Ay09tfcFSINuyVVXfdhf2OO2yNwb1TDEdZTFAZWilk/4mjbzjN7Qsa184Sgri6/4AEUu8aax9xa9n3o6Gjf7r0y/znHb8nHyNjaq4auz1Al02QJfVYhe4Jo0JeTeXBvRguK+4p1XTr6t9odkUQD4r4rRMyXcI3kTkxvDUGpb7KTR9TeeKb09spb7oCQGnFyLjfayOagtmrFAENfvR3i5F1/XlCGNN1JpTIgWJtEeHSwiIMTAsj8LPhzNbXYzCmK+LQYZ5a5EdE5UxdDP/uMcI4Fr2HlQMZSwWWhC/3xVR+ffyjS8WKr8jZ4Y7Oe5bI0EGSwEeB4JO/UPkvx282rRvpozP7Ah1Rt2hXokOlyw7KlWw4kVHuAEAAQA= @unknown]
+I0203 10:48:05.111776   16884 userspace-boot-properties.cpp:760] Userspace boot properties:
+I0203 10:48:05.111815   16884 userspace-boot-properties.cpp:764]   androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:06.0
+I0203 10:48:05.112019   16884 userspace-boot-properties.cpp:764]   androidboot.dalvik.vm.heapsize=576m
+I0203 10:48:05.112195   16884 userspace-boot-properties.cpp:764]   androidboot.debug.hwui.renderer=skiagl
+I0203 10:48:05.112375   16884 userspace-boot-properties.cpp:764]   androidboot.hardware=ranchu
+I0203 10:48:05.112554   16884 userspace-boot-properties.cpp:764]   androidboot.hardware.gltransport=pipe
+I0203 10:48:05.112733   16884 userspace-boot-properties.cpp:764]   androidboot.hardware.vulkan=ranchu
+I0203 10:48:05.112914   16884 userspace-boot-properties.cpp:764]   androidboot.logcat=*:V
+I0203 10:48:05.113135   16884 userspace-boot-properties.cpp:764]   androidboot.opengles.version=196609
+I0203 10:48:05.113397   16884 userspace-boot-properties.cpp:764]   androidboot.qemu=1
+I0203 10:48:05.113590   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.adb.pubkey=QAAAAHVjR5sj6w1w5KmxysMgi+6AL5nUJwVu6TBRtzPXQ+xT+5lnDJgb7rjDy22mOCELdmG/DpUYuaP5l+XolPJQdUcGRQ824ei81xbl0p/Bi6ynTcJ9fKYclLzek4hH99lUUE/RYrLmFmVgnlHrDf3VlEtEl1Qu8g0MgHmqevLDqfl11FqdSmNSkZCpX/QGQJUcVg9dNKWeswBnkvlV0wMjWLRzblgHdIZnzDy3fpS7QmqYbGOS9TijG8nSm6tEOr8Ite277fx0U4qaM088MvXJF2MInHfEWR7gZJNs0NAzeAuiXvmFHa3xTL4C7HWXbc3Ay09tfcFSINuyVVXfdhf2OO2yNwb1TDEdZTFAZWilk/4mjbzjN7Qsa184Sgri6/4AEUu8aax9xa9n3o6Gjf7r0y/znHb8nHyNjaq4auz1Al02QJfVYhe4Jo0JeTeXBvRguK+4p1XTr6t9odkUQD4r4rRMyXcI3kTkxvDUGpb7KTR9TeeKb09spb7oCQGnFyLjfayOagtmrFAENfvR3i5F1/XlCGNN1JpTIgWJtEeHSwiIMTAsj8LPhzNbXYzCmK+LQYZ5a5EdE5UxdDP/uMcI4Fr2HlQMZSwWWhC/3xVR+ffyjS8WKr8jZ4Y7Oe5bI0EGSwEeB4JO/UPkvx282rRvpozP7Ah1Rt2hXokOlyw7KlWw4kVHuAEAAQA= @unknown
+I0203 10:48:05.113807   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.avd_name=Pixel_9
+I0203 10:48:05.113983   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.camera_hq_edge_processing=0
+I0203 10:48:05.114163   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.camera_protocol_ver=1
+I0203 10:48:05.114342   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.cpuvulkan.version=4202496
+I0203 10:48:05.114520   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.gltransport.drawFlushInterval=800
+I0203 10:48:05.114698   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.gltransport.name=pipe
+I0203 10:48:05.114875   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.hwcodec.avcdec=2
+I0203 10:48:05.115053   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.hwcodec.hevcdec=2
+I0203 10:48:05.115230   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.hwcodec.vpxdec=2
+I0203 10:48:05.115427   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.settings.system.screen_off_timeout=2147483647
+I0203 10:48:05.115588   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.virtiowifi=1
+I0203 10:48:05.115763   16884 userspace-boot-properties.cpp:764]   androidboot.qemu.vsync=60
+I0203 10:48:05.115941   16884 userspace-boot-properties.cpp:764]   androidboot.serialno=EMULATOR35X6X11X0
+I0203 10:48:05.116118   16884 userspace-boot-properties.cpp:764]   androidboot.vbmeta.digest=b3271ba499104f4631ae3723913d5c12574e01715fce5b82d60beed097ead264
+I0203 10:48:05.116299   16884 userspace-boot-properties.cpp:764]   androidboot.vbmeta.hash_alg=sha256
+I0203 10:48:05.116474   16884 userspace-boot-properties.cpp:764]   androidboot.vbmeta.size=6720
+I0203 10:48:05.116651   16884 userspace-boot-properties.cpp:764]   androidboot.veritymode=enforcing
+WHPX on Windows 10.0.19045 detected.
+Windows Hypervisor Platform accelerator is operational
+netsimd I 02-03 02:48:05.479 daemon\src\rust_main.rs:98 - netsim artifacts path: "D:\\Temp\\netsimd"
+netsimd I 02-03 02:48:05.479 daemon\src\rust_main.rs:101 - NetsimdArgs {
+    fd_startup_str: None,
+    no_cli_ui: true,
+    no_web_ui: true,
+    pcap: false,
+    disable_address_reuse: false,
+    hci_port: None,
+    connector_instance: None,
+    instance: None,
+    logtostderr: false,
+    dev: false,
+    forward_host_mdns: false,
+    vsock: None,
+    config: None,
+    host_dns: Some(
+        "192.168.31.1",
+    ),
+    http_proxy: None,
+    wifi_tap: None,
+    wifi: None,
+    test_beacons: false,
+    no_test_beacons: false,
+    no_shutdown: false,
+    verbose: false,
+    version: false,
+}
+pc_memory_init: above 4g size: 40000000
+dsound: Could not initialize DirectSoundCapture
+dsound: Reason: No sound driver is available for use, or the given GUID is not a valid DirectSound device ID
+INFO         | Monitoring duration of emulator setup.
+WARNING      | The emulator now requires a signed jwt token for gRPC access! Use the -grpc flag if you really want an open unprotected grpc port
+INFO         | Using security allow list from: D:\sdk\emulator\lib\emulator_access.json
+WARNING      | *** Basic token auth should only be used by android-studio ***
+INFO         | The active JSON Web Key Sets can be found here: C:\Users\DELL\AppData\Local\Temp\avd\running\9996\jwks\d298a199-0547-4a0e-90a5-27524280b697\active.jwk
+INFO         | Scanning C:\Users\DELL\AppData\Local\Temp\avd\running\9996\jwks\d298a199-0547-4a0e-90a5-27524280b697 for jwk keys.
+INFO         | Started GRPC server at 127.0.0.1:8554, security: Local, auth: +token
+WARNING      | Failed to setup emulator in a timely fashion!
+INFO         | Advertising in: C:\Users\DELL\AppData\Local\Temp\avd\running\pid_9996.ini
+I0203 10:48:10.985419   11284 FrameBuffer.cpp:2805] Setting display: 0 configuration to: 1080x2424, dpi: 420x420
+I0203 10:48:10.989299   11284 FrameBuffer.cpp:2818] setDisplayActiveConfig 0
+INFO         | Checking system compatibility:
+INFO         |   Checking: hasCompatibleHypervisor
+INFO         |      Ok: Hypervisor compatibility to run avd: `Pixel_9` are met
+INFO         |   Checking: hasSufficientSystem
+INFO         |      Ok: System requirements to run avd: `Pixel_9` are met
+INFO         |   Checking: hasSufficientHwGpu
+INFO         |      Ok: Hardware GPU requirements to run avd: `Pixel_9` are passed
+INFO         |   Checking: hasSufficientDiskSpace
+INFO         |      Ok: Disk space requirements to run avd: `Pixel_9` are met
+INFO         | Loading snapshot 'default_boot'...
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Unknown XR viewport mode requested: 0, ignored.
+
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Unable to connect to packet streamer, no bluetooth emulation available
+INFO         | Successfully loaded snapshot 'default_boot'
+WARNING      | adb command 'D:\sdk\platform-tools\adb.exe -s emulator-5554 shell am start-foreground-service -e meter on com.android.emulator.radio.config/.MeterService ' failed: '* daemon not running; starting now at tcp:5037
+* daemon started successfully
+adb.exe: device 'emulator-5554' not found'
+WARNING      | UpdateCheck: Failure: Failure when receiving data from the peer
+WARNING      | UpdateCheck: failed to get the latest version, skipping check (current version '35.6.11-13610412')
