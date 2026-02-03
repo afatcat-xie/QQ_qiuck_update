@@ -48,13 +48,13 @@ jobs:
 
       - name: Nuitka 自动打包
         # 移除了重命名，保留了图标路径，增加了 uiautomation 收集
-        run: echo yes | python -m nuitka --standalone --plugin-enable=tk-inter  --include-package=uiautomation --include-package=PIL --include-package=keyboard --include-data-files=icon.ico=icon.ico --show-progress --windows-icon-from-ico=icon.ico  GUI.py
+        run: echo yes | python -m nuitka --standalone --onefile --plugin-enable=tk-inter  --include-package=uiautomation --include-package=PIL --include-package=keyboard --include-data-files=icon.ico=icon.ico --show-progress --windows-icon-from-ico=icon.ico  GUI.py
 
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           # 直接发布 GUI.exe，不进行重命名
-          files: D:\a\QQ_qiuck_update\QQ_qiuck_update\GUI.dist\GUI.exe
+          files: GUI.exe
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           name: ${{ github.event.inputs.release_title || github.ref_name }}
           body: ${{ github.event.inputs.release_body || '通过推送标签自动构建发布' }}
