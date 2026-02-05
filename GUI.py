@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -10,13 +9,20 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import keyboard
 import os
-import configparser
-from datetime import datetime
-from PIL import Image, ImageDraw
-import pystray
 import uiautomation as auto
+import configparser
+import base64
+from datetime import datetime
+from io import BytesIO
+from PIL import Image, ImageGrab, ImageDraw
+import pystray
+from pystray import MenuItem as item
+import pygetwindow as gw
+import pyautogui
+from openai import OpenAI
+import base64
 
-# ---------- 全局变量 ----------
+# ---------- Global variables | 全局变量 ----------
 running = False
 worker_thread = None
 time_interval = 1.0          
@@ -25,21 +31,33 @@ send_with_ctrl = False
 root = None                  
 status_label = None
 log_display = None  
-tray_icon = None             
+tray_icon = None
+ai_mode = False 
+entry = None
+saved_name = "User" # Default value | 默认值
+image64 = ""    
+api_key_global = "" # New: Global API Key variable | 新增：全局API密钥变量
+
+# New: Conversation history list | 新增：对话历史列表
+chat_context = [] 
+MAX_CONTEXT_LINES = 15 # How many recent screenshot records to show the AI | 给AI看最近多少次截图记录
+MAX_REPLY_LENGTH = 150 # New: Maximum character limit for AI replies | 新增：AI回复的最大字符数限制
+last_processed_chat_name = "" # New: Records the name of the last processed chat, used for detecting switches | 新增：记录上一次处理的聊天名称，用于检测切换
 
 INI_FILE = "qq_config.ini"
 LOG_DIR = "logs"
+HISTORY_FILE = "chat_history.txt" # New: History record file | 新增：历史记录文件
 
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
-# 日志初始化
+# Log initialization | 日志初始化
 log_filename = f"qq_monitor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 LOG_FILE = os.path.join(LOG_DIR, log_filename)
 log_fp = open(LOG_FILE, "a", encoding="utf-8")
 
 def log_info(message):
-    """线程安全的日志记录，支持文件、GUI和控制台输出"""
+    """Thread-safe logging | 线程安全的日志记录"""
     timestamp = datetime.now().strftime("%H:%M:%S")
     full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted_message = f"[{timestamp}] {message}"
@@ -50,7 +68,6 @@ def log_info(message):
     
     if log_display and root:
         try:
-            # 使用 after 确保在主线程更新 UI
             root.after(0, lambda: (
                 log_display.insert(tk.END, formatted_message + "\n"),
                 log_display.see(tk.END)
@@ -59,73 +76,461 @@ def log_info(message):
     print(formatted_message)
 
 def update_status(text, color):
-    """更新 GUI 上的状态标签"""
+    """Updates the status label on the GUI | 更新 GUI 上的状态标签"""
     if root and status_label:
-        root.after(0, lambda: status_label.config(text=f"状态: {text}", fg=color))
+        root.after(0, lambda: status_label.config(text=f"Status: {text} | 状态: {text}", fg=color))
 
-# ---------- 核心检测与自动发送逻辑 ----------
+# ---------- History Record Management (New) | 历史记录管理 (新增) ----------
+def update_chat_history(new_text):
+    """
+    Saves OCR results to file and memory.
+    Simple deduplication logic: if a new block of text is identical to the last, it won't be saved.
+    保存 OCR 结果到文件和内存。
+    简单的去重逻辑：如果新的一段文字和上一段完全一样，就不保存。
+    """
+    global chat_context
+    
+    if not new_text or not new_text.strip():
+        return False # Empty content does not update | 空内容不更新
+
+    # Remove leading/trailing whitespace | 去除首尾空格
+    clean_text = new_text.strip()
+    
+    # Check if it's identical to the previous record | 检查是否和上一条记录完全重复
+    if chat_context and chat_context[-1] == clean_text:
+        # log_info("Overall text is duplicated, not updating chat history.") # Reduce log output, just skip simply | 减少日志输出，仅做简单跳过
+        return False # Content duplicated, no update | 内容重复，不更新
+        
+    # Add to in-memory list | 添加到内存列表
+    chat_context.append(clean_text)
+    
+    # Keep the in-memory list from getting too long to prevent Token explosion | 保持内存列表不要太长，防止Token爆炸
+    if len(chat_context) > MAX_CONTEXT_LINES:
+        chat_context.pop(0)
+        
+    # Append to file (permanent storage) | 追加写入文件（永久保存）
+    try:
+        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"\n--- [Record Time: {timestamp} | 记录时间: {timestamp}] ---\n")
+            f.write(clean_text)
+            f.write("\n")
+        print(f"Chat history updated, current cache entries: {len(chat_context)} | 历史记录已更新，当前缓存条数: {len(chat_context)}")
+        return True # Update successful | 更新成功
+    except Exception as e:
+        log_info(f"Failed to save chat history: {e} | 保存历史记录失败: {e}")
+        return True
+
+# ---------- Core Detection and Auto-Send Logic | 核心检测与自动发送逻辑 ----------
+def crop_center_chat_no_header(image_path, output_path):
+    try:
+        img = Image.open(image_path)
+        width, height = img.size
+        # --- 1. Define left/right boundaries --- | --- 1. 定义左右边界 ---
+        left_boundary = int(width * 0.33)
+        right_boundary = int(width * 0.78)
+        # --- 2. Define top/bottom boundaries --- | --- 2. 定义上下边界 ---
+        top_boundary = int(height * 0.05)
+        bottom_boundary = height
+        crop_box = (left_boundary, top_boundary, right_boundary, bottom_boundary)
+        # --- 3. Perform cropping and saving --- | --- 3. 执行裁剪并保存 ---
+        cropped_img = img.crop(crop_box)
+        cropped_img.save(output_path)
+    except Exception as e:
+        print(f"Cropping error: {e} | 裁剪错误: {e}")
+
+def image_to_base64(image_path):
+    global image64
+    try:
+        with open(image_path, "rb") as image_file:
+            image64 = base64.b64encode(image_file.read()).decode()
+    except Exception as e:
+        return f"Conversion failed: {e} | 转换失败: {e}"
+
+def capture_qq_with_padding(reposition_right_if_needed=False):
+    windows = gw.getWindowsWithTitle('QQ')
+    if not windows:
+        log_info("QQ window not found. | 未找到QQ窗口。")
+        return False
+    
+    qq = windows[0]
+    
+    if qq.isMinimized:
+        qq.restore()
+    qq.activate()
+    _time.sleep(0.5) # Allow activation to settle
+
+    if reposition_right_if_needed:
+        screen_width, screen_height = pyautogui.size()
+        right_half_left_edge_target = screen_width / 2
+        
+        # Check if QQ window is approximately snapped to the right half
+        # We allow a small tolerance for pixel variations
+        # 检查QQ窗口是否大致吸附到右半边
+        # 我们允许像素变化有小的容差
+        is_snapped_right = False
+        if abs(qq.left - right_half_left_edge_target) < 10 and abs(qq.width - right_half_left_edge_target) < 10:
+             is_snapped_right = True
+
+        if not is_snapped_right:
+            log_info("QQ window is not on the right or not properly docked, executing Win+Right shortcut to adjust position. | QQ窗口不在右侧或未正确停靠，执行Win+Right快捷键以调整位置。")
+            keyboard.press_and_release('win+right')
+            _time.sleep(0.8) # Wait for window to reposition
+            # Re-get window object after repositioning to update its coordinates
+            # 重新获取窗口对象以在重定位后更新其坐标
+            windows = gw.getWindowsWithTitle('QQ')
+            if windows:
+                qq = windows[0]
+            else:
+                log_info("Warning: QQ window disappeared after repositioning. Skipping screenshot. | 警告: QQ窗口在调整位置后消失。跳过截图。")
+                return False
+        else:
+            log_info("QQ window is already on the right and properly docked, skipping Win+Right shortcut. | QQ窗口已在右侧并正确停靠，跳过Win+Right快捷键。")
+            
+    padding_side = 0.5
+    try:
+        # Use updated qq coordinates after potential repositioning | 使用可能重定位后的更新QQ坐标
+        screenshot = ImageGrab.grab(bbox=(qq.left+padding_side, qq.top, qq.right-padding_side, qq.bottom), all_screens=True)
+        screenshot.save("qq_trimmed.png")
+        return True
+    except Exception as e:
+        log_info(f"Screenshot failed: {e} | 截图失败: {e}")
+        return False
+
+def save_value():
+    global saved_name
+    user_input = entry.get() 
+    saved_name = user_input
+    messagebox.showinfo("Tip | 提示", f"Name saved: {saved_name} | 名字已保存: {saved_name}")
+    
+def AI1_OCR():
+    """Executes OCR recognition, returns recognized text | 执行 OCR 识别，返回识别到的文本"""
+    # Please replace with your actual API Key (if needed, it should be read from config file or managed securely)
+    # 请将此占位符替换为你在OpenAI或Siliconflow获得的有效API Key
+    client = OpenAI(
+        api_key=api_key_global, # Use global API key variable | 使用全局API密钥变量
+        base_url="https://api.siliconflow.cn/v1"
+    )
+    
+    try:
+        response_obj = client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-OCR",
+            temperature=0,
+            top_p=0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url":f"data:image/png;base64,{image64}"}},
+                        {"type": "text", "text": "Output all text in the image, preserving original line breaks. | 输出图片中的所有文字，保持原有换行。"}
+                    ]
+                }
+            ]
+        )
+        text_content = response_obj.choices[0].message.content
+        return text_content
+    except Exception as e:
+        log_info(f"OCR Error: {e}")
+        return ""
+
+def AI2_Generate_Reply(ocr_chat_name_hint=""): # New parameter ocr_chat_name_hint | 新增参数 ocr_chat_name_hint
+    """
+    Reads historical records in chat_context to generate replies.
+    读取 chat_context 中的历史记录，生成回复。
+    """
+    global chat_context, last_processed_chat_name 
+    
+    if not chat_context:
+        return ""
+
+    # Please replace with your actual API Key (if needed, it should be read from config file or managed securely)
+    # 请将此占位符替换为你在OpenAI或Siliconflow获得的有效API Key
+    client = OpenAI(
+        api_key=api_key_global, # Use global API key variable | 使用全局API密钥变量
+        base_url="https://api.siliconflow.cn/v1"
+    )
+
+    # Concatenate recent OCR results as context
+    # Tell the AI there might be repetitive content and let it sort out the conversation logic itself
+    # 将最近几次的 OCR 结果拼起来作为上下文
+    # 告诉 AI 可能会有重复内容，让它自己梳理
+    full_context_str = "\n====== Previous Screenshot Records | 之前的屏幕截图记录 ======\n".join(chat_context)
+
+    # Build AI's current chat environment information | 构建AI的当前聊天环境信息
+    current_identity_for_ai = ""
+    if ocr_chat_name_hint:
+        current_identity_for_ai = f"The current chat object/group chat mainly appears as 【{ocr_chat_name_hint}】. | 当前聊天对象/群聊主要显示为【{ocr_chat_name_hint}】。"
+        if last_processed_chat_name and last_processed_chat_name != "QQ" and last_processed_chat_name != ocr_chat_name_hint:
+            current_identity_for_ai += f"The window name detected by the system is 【{last_processed_chat_name}】. | 系统检测的窗口名称是【{last_processed_chat_name}】。"
+    elif last_processed_chat_name and last_processed_chat_name != "QQ":
+        current_identity_for_ai = f"The current chat name detected by the system is 【{last_processed_chat_name}】. | 系统检测的当前聊天名称是【{last_processed_chat_name}】。"
+    elif last_processed_chat_name == "QQ":
+        current_identity_for_ai = "The current chat window title is the generic name 【QQ】. | 当前聊天窗口标题为通用名称【QQ】。"
+
+
+    system_prompt = f"""
+Ignore all LV*, they represent levels; only focus on the specific names that follow as roles. | 忽略所有LV*，它们是等级，只能关注后面的具体名称作为角色。
+You are a chat assistant. Your role is 【{saved_name}】, please reply from the perspective and identity of 【{saved_name}】. | 你是一个聊天助手。你的角色是【{saved_name}】，请以【{saved_name}】的视角和身份进行回复。
+{current_identity_for_ai}
+You need to read the 【chat history fragments】 I provide. | 你需要阅读我提供的【聊天记录历史片段】。
+Note: These fragments are text from continuous time screenshots, so the content may have a lot of repetition (overlap). You need to ignore the repetitive parts yourself and clarify the conversation logic. | 注意：这些片段是连续时间的屏幕截图文字，因此内容可能会有大量重复（重叠），你需要自行忽略重复部分，理清对话逻辑。
+
+Please predict and output my next reply based on the latest conversation progress. | 请根据最新的对话进展，预测并输出我的下一句回复。
+Requirements: | 要求：
+1. Only output the reply content, do not output the analysis process. | 1. 只输出回复内容，不要输出分析过程。
+2. If the other party has ended the topic or no reply is needed, output "PASS". | 2. 如果对方已经结束话题或不需要回复，输出 "PASS"。
+3. The tone of voice should be natural. | 3. 语气要自然。
+"""
+    log_info(f"System Prompt sent to AI:\n{system_prompt} | 发送给AI的系统Prompt:\n{system_prompt}")
+    log_info(f"User content sent to AI (chat history):\n{full_context_str} | 发送给AI的用户内容 (聊天历史):\n{full_context_str}")
+
+    try:
+        response_obj = client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f'This is the extracted history: \n{full_context_str} | 这是提取到的历史记录：\n{full_context_str}'}
+            ]
+        )
+        reply = response_obj.choices[0].message.content
+        log_info(f"AI original reply:\n{reply} | AI原始回复:\n{reply}")
+        # Simply clean up the chain of thought <think>...</think> that DeepSeek sometimes includes (if any)
+        # 简单清洗一下 DeepSeek 有时会带的思维链 <think>...</think> (如果有)
+        if "</think>" in reply:
+            reply = reply.split("</think>")[-1].strip()
+            
+        return reply
+    except Exception as e:
+        log_info(f"Generation Error: {e}")
+        return ""
 
 def worker_logic():
-    global running
-    # 仅允许 EditControl，排除了可能导致死循环或误触发的 DocumentControl
+    global running, last_processed_chat_name
     VALID_CONTROL_TYPES = ['EditControl']
-    
+
+    # Introduce a variable to store the OCR results (list of words) from the previous round
+    # 引入一个变量来存储上一轮的 OCR 结果（分词列表）
+    last_ocr_words = [] # Ensure initialized as a list, not None | 确保初始化为列表，而不是 None
+
     with auto.UIAutomationInitializerInThread(debug=False):
-        log_info("核心监控引擎已启动...")
+        log_info("Core monitoring engine started... | 核心监控引擎已启动...")
+        
         while running:
             try:
                 el = auto.GetFocusedControl()
-                
                 if not el:
-                    update_status("等待有效焦点", "orange")
+                    update_status("Waiting for focus | 等待焦点", "orange")
+                    # If focus leaves the QQ window, reset chat context
+                    # 如果焦点离开了QQ窗口，重置聊天上下文
+                    if last_processed_chat_name:
+                        log_info(f"Focus left QQ window, resetting chat context. Original chat: {last_processed_chat_name} | 焦点离开QQ窗口，重置聊天上下文。原聊天: {last_processed_chat_name}")
+                        last_processed_chat_name = ""
+                        chat_context.clear()
+                        last_ocr_words = [] # Clear word history | 清除词汇历史
                 else:
                     ctrl_type = el.ControlTypeName
-                    ctrl_name = el.Name if el.Name else "无名称"
-                    window = el.GetTopLevelControl()
-                    win_title = window.Name if window else "未知窗口"
+                    try:
+                        window = el.GetTopLevelControl()
+                        win_title = window.Name if window else "Unknown | 未知"
+                    except: win_title = "Unknown | 未知"
 
-                    info_str = f"焦点窗口: [{win_title}] | 控件: [{ctrl_type}]"
-                    print(info_str)
-                    if win_title and "QQ" in win_title and "\\" not in win_title:
-                        # 明确禁止在文档展示区（通常是聊天记录区）尝试输入
-    
+                    if win_title and "QQ" == win_title and "\\" not in win_title:
+                        # Extract main chat name from window title, used for status and switching judgment
+                        # 从窗口标题中提取主要聊天名称，用于状态和切换判断
+                        # E.g.: "Group Chat Name(12345)" -> "Group Chat Name"
+                        # 例如："群聊名称(12345)" -> "群聊名称"
+                        # "Contact Name" -> "Contact Name"
+                        # "联系人名称" -> "联系人名称"
+                        # "QQ" -> "QQ" (Generic Window)
+                        # "QQ" -> "QQ" (通用窗口)
+                        current_chat_name_from_title = win_title.split('(')[0].strip() if '(' in win_title else win_title.strip()
+                        
+                        if current_chat_name_from_title != last_processed_chat_name:
+                            log_info(f"Chat switch detected! From '{last_processed_chat_name if last_processed_chat_name else 'None | 无'}' to '{current_chat_name_from_title}'. | 检测到聊天切换！从 '{last_processed_chat_name if last_processed_chat_name else '无'}' 切换到 '{current_chat_name_from_title}'。")
+                            last_processed_chat_name = current_chat_name_from_title
+                            chat_context.clear() # Clear conversation history when switching chats | 切换聊天时清空对话历史
+                            last_ocr_words = [] # Clear word history when switching chats | 切换聊天时清空词汇历史
+                            log_info("Chat history context cleared. | 已清空聊天历史上下文。")
+
                         if ctrl_type == 'DocumentControl':
-                            update_status("禁止在文档区输入", "red")
+                            update_status("Input prohibited in document area | 禁止在文档区输入", "red")
+                        
                         elif ctrl_type in VALID_CONTROL_TYPES:
-                            # 模拟输入逻辑
-                            text_to_send = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(input_length))
-                            keyboard.write(text_to_send)
-                            _time.sleep(0.1) # 缓冲，防止发送过快
                             
-                            if send_with_ctrl:
-                                keyboard.press_and_release('ctrl+enter')
-                                print('ctrl+enter')
+                            # =========== AI Mode | AI 模式 ===========
+                            if ai_mode:
+                                log_info(f"【AI Mode】Chat window '{last_processed_chat_name}' detected... | 【AI模式】检测到聊天窗口 '{last_processed_chat_name}'...") 
+                                update_status("AI: Capturing screen for analysis... | AI: 正在截屏分析...", "purple")
+                                
+                                replied_this_cycle = False # Mark if replied this cycle | 标记本轮是否已回复
+                                
+                                # 1. Adjust window and screenshot (now includes conditional Win+Right)
+                                # 1. 调整窗口并截图 (现在包含条件性Win+Right)
+                                windows = gw.getWindowsWithTitle('QQ') # Get latest window info again | 再次获取以确保最新的窗口信息
+                                if windows:
+                                    qq_window = windows[0]
+                                    if qq_window.isMinimized: qq_window.restore()
+                                    qq_window.activate()
+                                    _time.sleep(0.5) # Wait for activation | 等待激活
+                                else:
+                                    log_info("QQ window disappeared during activation, skipping AI analysis. | QQ窗口在激活时消失，跳过AI分析。")
+                                    update_status("AI: QQ window lost | AI: QQ窗口丢失", "red")
+                                    _time.sleep(max(2.0, time_interval))
+                                    continue # Skip the rest of the current loop | 跳过当前循环的剩余部分
+
+                                if capture_qq_with_padding(reposition_right_if_needed=True): # Pass True for conditional repositioning | 传递True以条件性重定位
+                                    crop_center_chat_no_header("qq_trimmed.png", "image.png")
+                                    image_to_base64("image.png")
+                                    
+                                    # 2. OCR Recognition | 2. OCR 识别
+                                    current_ocr_text = AI1_OCR()
+                                    log_info(f"OCR Recognition Result:\n{current_ocr_text} | OCR识别结果:\n{current_ocr_text}")
+                                    
+                                    # --- New: Attempt to get chat name slice from OCR results ---
+                                    # --- 新增：从OCR结果中尝试获取聊天名称切片 ---
+                                    ocr_chat_name_hint = ""
+                                    first_non_empty_line = ""
+                                    for line in current_ocr_text.split('\n'):
+                                        stripped_line = line.strip()
+                                        if stripped_line:
+                                            first_non_empty_line = stripped_line
+                                            break
+                                            
+                                    if first_non_empty_line:
+                                        # Heuristic rule: if the first line is in "Name: Message" format
+                                        # 启发式规则：如果第一行是 "名称: 消息" 格式
+                                        if "：" in first_non_empty_line and not first_non_empty_line.startswith(saved_name + "："):
+                                            parts = first_non_empty_line.split('：', 1)
+                                            if parts[0].strip():
+                                                ocr_chat_name_hint = parts[0].strip()
+                                        # Heuristic rule: if the first line is in "[Group Name] Message" format
+                                        # 启发式规则：如果第一行是 "[群名] 消息" 格式
+                                        elif first_non_empty_line.startswith('[') and ']' in first_non_empty_line:
+                                            end_bracket_idx = first_non_empty_line.find(']')
+                                            if end_bracket_idx != -1:
+                                                ocr_chat_name_hint = first_non_empty_line[1:end_bracket_idx].strip()
+                                    
+                                    if ocr_chat_name_hint:
+                                        log_info(f"Chat hint name extracted from OCR result: {ocr_chat_name_hint} | 从OCR结果中提取到聊天提示名称: {ocr_chat_name_hint}")
+                                    # --- End OCR chat name slice extraction | 结束 OCR 聊天名称切片提取 ---
+
+                                    current_ocr_words_set = set(word for word in current_ocr_text.split() if word.strip())
+                                    
+                                    is_new_content_at_word_level = False
+                                    if last_ocr_words: # Check if list is not empty | 检查列表是否非空
+                                        last_ocr_words_set = set(last_ocr_words)
+                                        # Check if new words appeared (excluding old overlapping parts)
+                                        # 检查是否有新的单词出现 (排除旧的重叠部分)
+                                        if current_ocr_words_set - last_ocr_words_set: # Find words in current set but not in history set | 查找当前集合中有而历史集合中没有的词
+                                            is_new_content_at_word_level = True
+                                    elif current_ocr_words_set: # If last_ocr_words is empty (first run) and current has content, treat as new content | 如果last_ocr_words为空（首次运行），且当前有内容，则视为新内容
+                                        is_new_content_at_word_level = True
+                                    
+                                    # 3. Update history and judge if there's new content, only consider replying when new content appears
+                                    # 3. 更新历史并判断是否有新内容，只有在新内容出现时才考虑回复
+                                    if is_new_content_at_word_level:
+                                        log_info("New message detected at word level, considering generating a reply... | 检测到词汇级别的新消息，正在考虑生成回复...")
+                                        # update_chat_history still handles overall text deduplication (against the last whole entry)
+                                        # update_chat_history 仍然处理整体文本的去重（与上一整条）
+                                        if update_chat_history(current_ocr_text): 
+                                            log_info(f"History for '{last_processed_chat_name}' updated, generating reply... | 已更新 '{last_processed_chat_name}' 的历史记录，生成回复中...")
+                                            # 4. Generate reply based on history | 4. 基于历史生成回复
+                                            # Pass ocr_chat_name_hint to AI2_Generate_Reply (Note: API key replaced with placeholder)
+                                            # 将 ocr_chat_name_hint 传递给 AI2_Generate_Reply (注意API密钥已替换为占位符)
+                                            reply_text = AI2_Generate_Reply(ocr_chat_name_hint=ocr_chat_name_hint)
+                                            
+                                            # --- Limit AI reply max length --- | --- 限制 AI 回复的最大长度 ---
+                                            if len(reply_text) > MAX_REPLY_LENGTH:
+                                                reply_text = reply_text[:MAX_REPLY_LENGTH - 3] + "..." # Truncate and add ellipsis | 截断并添加省略号
+                                                log_info(f"AI reply content too long, truncated to {MAX_REPLY_LENGTH} characters. | AI回复内容过长，已截断至 {MAX_REPLY_LENGTH} 字符。")
+
+                                            if reply_text and "PASS" not in reply_text and len(reply_text) > 0:
+                                                log_info(f"AI decided to reply: {reply_text} | AI 决定回复: {reply_text}")
+                                                keyboard.write(reply_text)
+                                                _time.sleep(0.5)
+                                                
+                                                if send_with_ctrl:
+                                                    keyboard.press_and_release('ctrl+enter')
+                                                else:
+                                                    keyboard.press_and_release('enter')
+                                                
+                                                update_status("AI replied successfully | AI 回复成功", "green")
+                                                replied_this_cycle = True # Mark as replied | 标记已回复
+                                                
+                                                # --- Key modification: update last_ocr_words immediately after AI replies ---
+                                                # Rescreenshot to update baseline recognition content, including AI's own reply, to avoid treating it as "new content" next time
+                                                # --- 关键修改：AI 回复后立即更新 last_ocr_words ---
+                                                # 重新截图更新基准识别内容，包含AI自己的回复，避免下次检测将其视为"新内容"
+                                                log_info("AI has finished replying, rescreenshotting to update baseline recognition content to avoid self-repeated replies... | AI已完成回复，重新截图更新基准识别内容，避免自我重复回复...")
+                                                _time.sleep(1.0) # Wait for message to send and display on screen | 等待消息发送并显示到屏幕
+                                                if capture_qq_with_padding(reposition_right_if_needed=False): # This screenshot only gets current status, no need to reposition again | 此次截图仅获取当前状态，无需再次重定位
+                                                    crop_center_chat_no_header("qq_trimmed.png", "image.png")
+                                                    image_to_base64("image.png")
+                                                    post_reply_ocr_text = AI1_OCR()
+                                                    # Update last_ocr_words to screen text after AI reply, as baseline for next comparison
+                                                    # 更新 last_ocr_words 为AI回复后的屏幕文字，作为下一次比较的基准
+                                                    last_ocr_words = list(set(word for word in post_reply_ocr_text.split() if word.strip()))
+                                                    log_info(f"Baseline recognition content updated (including AI reply). | 基准识别内容已更新 (包含AI回复)。")
+                                                else:
+                                                    log_info("Warning: Rescreenshot failed after AI reply, may cause AI to repeatedly reply to its own content in the next loop. | 警告: AI回复后重新截图失败，可能导致下一次循环中AI重复回复自身内容。")
+                                                # --- End update after AI reply | 结束 AI 回复后更新 ---
+
+                                            else:
+                                                log_info("AI decided to remain silent (PASS). | AI 决定保持沉默 (PASS)。")
+                                                update_status("AI standby (no reply) | AI 待机中 (无回复)", "blue")
+                                        else:
+                                            log_info("Although new words appeared, skipping reply due to overall content duplication with previous record. | 尽管有新词汇，但由于整体内容与上一记录重复，跳过回复。")
+                                            update_status("Monitoring (no necessary reply) | 监控中 (非必要回复)", "blue")
+                                    else:
+                                        log_info("Screen content highly repetitive or no new words, skipping processing. | 画面内容高度重复或无新词汇，跳过处理。")
+                                        update_status("Monitoring (no new messages) | 监控中 (无新消息)", "gray")
+
+                                    # If no AI reply was made this round, set the last OCR result as the baseline for the next round
+                                    # 如果本轮没有进行 AI 回复，则将上次 OCR 结果作为下一轮的基准
+                                    if not replied_this_cycle:
+                                        last_ocr_words = list(current_ocr_words_set)
+                                    
+                                else:
+                                    log_info("Screenshot failed, unable to perform AI analysis. | 截图失败，无法进行AI分析。")
+                                    update_status("AI: Screenshot failed | AI: 截图失败", "red")
+
+                                # AI mode cooldown time | AI 模式的冷却时间
+                                _time.sleep(max(2.0, time_interval))
+
+                            # =========== Random Character Mode | 随机字符模式 ===========
                             else:
-                                keyboard.press_and_release('enter')
-                                print('enter')
-                            
-                            log_info(f"【发送成功】窗口: {win_title} | 内容: {text_to_send}")
-                            update_status("运行中 (发送成功)", "green")
+                                text_to_send = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(input_length))
+                                keyboard.write(text_to_send)
+                                _time.sleep(0.1) 
+                                if send_with_ctrl: keyboard.press_and_release('ctrl+enter')
+                                else: keyboard.press_and_release('enter')
+                                log_info(f"Randomly sent: {text_to_send} | 随机发送: {text_to_send}")
+                                _time.sleep(max(0.1, time_interval))
                         else:
-                            update_status("无效输入区域", "orange")
+                            update_status("Not input area | 非输入区域", "orange")
                     else:
-                        update_status("非 QQ 窗口", "orange")
+                        update_status("Not QQ window | 非 QQ 窗口", "orange")
+                        # If not QQ window, reset chat context
+                        # 如果非QQ窗口，重置聊天上下文
+                        if last_processed_chat_name:
+                            log_info(f"Focus left QQ window, resetting chat context. Original chat: {last_processed_chat_name} | 焦点离开QQ窗口，重置聊天上下文。原聊天: {last_processed_chat_name}")
+                            last_processed_chat_name = ""
+                            chat_context.clear()
+                            last_ocr_words = [] # Clear word history | 清除词汇历史
 
             except Exception as e:
-                log_info(f"【循环异常】: {str(e)}")
+                log_info(f"Exception: {str(e)} | 异常: {str(e)}")
             
-            _time.sleep(max(0.1, time_interval))
-        log_info("核心监控引擎已安全停止。")
+            _time.sleep(0.5)
+        log_info("Engine stopped. | 引擎已停止。")
 
-# ---------- 托盘与配置功能 ----------
-
+# ---------- Tray and Configuration (Unchanged) | 托盘与配置 (保持不变) ----------
 def create_dummy_icon():
-    """创建一个简单的托盘图标（如果找不到外部图标文件）"""
     width, height = 64, 64
-    image = Image.new('RGB', (width, height), color=(0, 120, 215)) # 蓝色背景
-    dc = ImageDraw.Draw(image)
+    images = Image.new('RGB', (width, height), color=(0, 120, 215))
+    dc = ImageDraw.Draw(images)
     dc.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
-    return image
+    return images
 
 def on_tray_quit(icon, item):
     icon.stop()
@@ -137,23 +542,18 @@ def show_window(icon, item):
     root.after(0, root.deiconify)
 
 def withdraw_window():
-    """点击窗口关闭按钮时隐藏到托盘"""
     root.withdraw()
     global tray_icon
     image = create_dummy_icon()
     if os.path.exists("icon.ico"):
         try: image = Image.open("icon.ico")
         except: pass
-    
-    menu = (
-        pystray.MenuItem('显示窗口', show_window), 
-        pystray.MenuItem('退出程序', on_tray_quit)
-    )
-    tray_icon = pystray.Icon("QQTool", image, "QQ自动发送工具", menu)
+    menu = (pystray.MenuItem('Show Window | 显示窗口', show_window), pystray.MenuItem('Exit Program | 退出程序', on_tray_quit))
+    tray_icon = pystray.Icon("QQTool", image, "QQ Tool | QQ工具", menu)
     threading.Thread(target=tray_icon.run, daemon=True).start()
 
 def load_config():
-    global time_interval, send_with_ctrl, input_length
+    global time_interval, send_with_ctrl, input_length, ai_mode, api_key_global
     config = configparser.ConfigParser()
     if os.path.exists(INI_FILE):
         try:
@@ -162,115 +562,109 @@ def load_config():
                 time_interval = config.getfloat('Settings', 'interval', fallback=1.0)
                 input_length = config.getint('Settings', 'input_length', fallback=10)
                 send_with_ctrl = config.getboolean('Settings', 'send_with_ctrl', fallback=False)
+                ai_mode = config.getboolean('Settings', 'ai_mode', fallback=False)
+                api_key_global = config.get('Settings', 'api_key', fallback="") # Load API key | 加载API密钥
         except: pass
 
 def save_config():
+    global api_key_global
     config = configparser.ConfigParser()
     config['Settings'] = {
         'interval': str(time_interval),
         'input_length': str(input_length),
-        'send_with_ctrl': str(send_with_ctrl)
+        'send_with_ctrl': str(send_with_ctrl),
+        'ai_mode': str(ai_mode),
+        'api_key': api_key_global # Save API key | 保存API密钥
     }
     with open(INI_FILE, 'w') as f: config.write(f)
 
 def toggle_worker():
-    """切换监控开启/关闭状态"""
     global running, worker_thread
     if running:
         running = False
-        update_status("已停止", "blue")
-        log_info("已停止监控")
+        update_status("Stopped | 已停止", "blue")
     else:
         running = True
         worker_thread = threading.Thread(target=worker_logic, daemon=True)
         worker_thread.start()
-        update_status("运行中", "green")
-        log_info("已启动监控")
+        update_status("Running | 运行中", "green")
 
 def clear_logs():
-    if log_display:
-        log_display.delete('1.0', tk.END)
-        log_info("日志界面已清空")
+    if log_display: log_display.delete('1.0', tk.END)
 
-# ---------- GUI 界面构建 ----------
-
+# ---------- GUI ----------
 def run_gui():
-    global root, status_label, log_display
+    global root, status_label, log_display, entry, api_key_global
     load_config()
-    
     root = tk.Tk()
-    root.title("QQ 自动发送监控工具")
-    root.geometry("800x800")
+    root.title("QQ AI Auto Reply Assistant | QQ AI 自动回复助手")
+    root.geometry("800x850")
     root.protocol('WM_DELETE_WINDOW', withdraw_window)
-
-    # 样式配置
-    style = ttk.Style()
-    style.configure("TButton", padding=5)
 
     main_frame = ttk.Frame(root, padding="15")
     main_frame.pack(fill=tk.BOTH, expand=True)
 
-    # --- 设置区域 ---
-    settings_label = ttk.Label(main_frame, text="参数设置", font=("微软雅黑", 10, "bold"))
-    settings_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
-
-    ttk.Label(main_frame, text="发送间隔 (秒):").grid(row=1, column=0, sticky=tk.W, pady=5)
-    interval_var = tk.DoubleVar(value=time_interval)
-    ttk.Entry(main_frame, textvariable=interval_var, width=15).grid(row=1, column=1, sticky=tk.W)
-
-    ttk.Label(main_frame, text="随机字符位数:").grid(row=2, column=0, sticky=tk.W, pady=5)
-    length_var = tk.IntVar(value=input_length)
-    ttk.Entry(main_frame, textvariable=length_var, width=15).grid(row=2, column=1, sticky=tk.W)
-
+    ttk.Label(main_frame, text="Core Settings | 核心设置", font=("微软雅黑", 10, "bold")).pack(pady=5)
+    
+    # Mode switch | 模式开关
+    frame_mode = ttk.Frame(main_frame)
+    frame_mode.pack(fill=tk.X, pady=5)
     send_method_var = tk.BooleanVar(value=send_with_ctrl)
-    ttk.Checkbutton(main_frame, text="使用 Ctrl+Enter 发送 (QQ设置需匹配)", variable=send_method_var).grid(row=3, column=0, columnspan=2, pady=5, sticky=tk.W)
+    ttk.Checkbutton(frame_mode, text="Send with Ctrl+Enter | Ctrl+Enter发送", variable=send_method_var).pack(side=tk.LEFT, padx=10)
+    send_method_var_AI = tk.BooleanVar(value=ai_mode)
+    ttk.Checkbutton(frame_mode, text="Enable AI Smart Reply | 启用 AI 智能回复", variable=send_method_var_AI).pack(side=tk.LEFT, padx=10)
+
+    # Username | 用户名
+    ttk.Label(main_frame, text="Set My Nickname (Anti-AI personality split): | 设置我的昵称 (防AI精神分裂):").pack(pady=(10,0))
+    entry = ttk.Entry(main_frame)
+    entry.pack(pady=5)
+    ttk.Button(main_frame, text="Save Nickname | 保存昵称", command=save_value).pack(pady=2)
+
+    # API Key Input Box | API Key 输入框
+    ttk.Label(main_frame, text="AI Service API Key:\n(Please get from OpenAI or Siliconflow) | AI 服务 API Key:\n(请从 OpenAI 或 Siliconflow 获取)").pack(pady=(10,0))
+    api_key_entry_var = tk.StringVar(value=api_key_global) # Bind API key variable | 绑定API密钥变量
+    api_key_entry = ttk.Entry(main_frame, textvariable=api_key_entry_var, width=50, show='*') # Use show='*' to hide input | 使用show='*'隐藏输入
+    api_key_entry.pack(pady=5)
+    ttk.Button(main_frame, text="Update API Key | 更新API Key", command=lambda: [save_config(), messagebox.showinfo("Tip | 提示", "API Key updated | API Key已更新")]).pack(pady=2)
+
+    # Other parameters | 其他参数
+    frame_params = ttk.Frame(main_frame)
+    frame_params.pack(fill=tk.X, pady=10)
+    ttk.Label(frame_params, text="Detection Interval (s): | 检测间隔(s):").pack(side=tk.LEFT)
+    interval_var = tk.DoubleVar(value=time_interval)
+    ttk.Entry(frame_params, textvariable=interval_var, width=8).pack(side=tk.LEFT, padx=5)
+
+    ttk.Label(frame_params, text="Random Characters: | 随机字符数:").pack(side=tk.LEFT, padx=(10,0))
+    length_var = tk.IntVar(value=input_length)
+    ttk.Entry(frame_params, textvariable=length_var, width=8).pack(side=tk.LEFT, padx=5)
 
     def apply():
-        global time_interval, input_length, send_with_ctrl
+        global time_interval, input_length, send_with_ctrl, ai_mode, api_key_global
         try:
             time_interval = interval_var.get()
             input_length = length_var.get()
             send_with_ctrl = send_method_var.get()
+            ai_mode = send_method_var_AI.get()
+            api_key_global = api_key_entry_var.get() # Get API key and update global variable | 获取API密钥并更新全局变量
             save_config()
-            log_info("配置已成功应用并保存至本地")
-            messagebox.showinfo("成功", "配置已应用")
-        except: 
-            messagebox.showerror("错误", "请输入有效的数值")
+            messagebox.showinfo("Success | 成功", "Configuration saved | 配置已保存")
+        except tk.TclError as e: # Catch Tkinter specific errors for invalid input
+            messagebox.showerror("Error | 错误", f"Invalid value or input format: {e} | 数值无效或输入格式错误: {e}")
+        except Exception as e:
+            messagebox.showerror("Error | 错误", f"Unknown error occurred while saving configuration: {e} | 保存配置时发生未知错误: {e}")
+            
 
-    ttk.Button(main_frame, text="保存并应用配置", command=apply).grid(row=4, column=0, columnspan=2, pady=10)
 
-    # --- 状态与日志 ---
-    ttk.Separator(main_frame, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky="ew", pady=10)
+    ttk.Button(main_frame, text="Apply Configuration | 应用配置", command=apply).pack(pady=10)
 
-    status_label = tk.Label(main_frame, text="状态: 已停止", font=("微软雅黑", 11, "bold"), fg="blue")
-    status_label.grid(row=6, column=0, columnspan=2, pady=5)
+    # Log | 日志
+    status_label = tk.Label(main_frame, text="Status: Standby | 状态: 待机", fg="blue", font=("微软雅黑", 12))
+    status_label.pack(pady=5)
+    log_display = scrolledtext.ScrolledText(main_frame, height=20)
+    log_display.pack(fill=tk.BOTH, expand=True)
 
-    log_header_frame = ttk.Frame(main_frame)
-    log_header_frame.grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(10, 2))
-    ttk.Label(log_header_frame, text="实时运行日志:").pack(side=tk.LEFT)
-    ttk.Button(log_header_frame, text="清空日志", command=clear_logs, width=10).pack(side=tk.LEFT, padx=10)
-
-    log_display = scrolledtext.ScrolledText(main_frame, height=18, width=70, font=("Consolas", 9), bg="#f8f8f8")
-    log_display.grid(row=8, column=0, columnspan=2, sticky=tk.NSEW)
-
-    # --- 快捷键提示 ---
-    footer_label = ttk.Label(main_frame, text="全局快捷键: Ctrl + Alt + Q (启动/停止)", foreground="gray")
-    footer_label.grid(row=9, column=0, columnspan=2, pady=15)
-
-    # 注册快捷键
-    try:
-        keyboard.add_hotkey("ctrl+alt+q", toggle_worker)
-        log_info("热键 Ctrl+Alt+Q 注册成功")
-    except Exception as e:
-        log_info(f"热键注册失败: {e}")
-    
-    log_info("程序启动完成，等待操作。")
-    
-    # 窗口居中
-    root.update_idletasks()
-    x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
-    y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
-    root.geometry(f"+{x}+{y}")
+    # Hotkey | 热键
+    keyboard.add_hotkey("ctrl+alt+q", toggle_worker)
     
     root.mainloop()
 
