@@ -1,12 +1,11 @@
-# 键盘模拟与全局热键
-keyboard
+# 应用运行时依赖
+keyboard==0.13.5
+pystray==0.19.5
+Pillow==10.2.0
+uiautomation==2.0.0
+pygetwindow==0.0.9
+pyautogui==0.9.54
+openai==1.12.0
 
-# 系统托盘图标支持
-pystray
-Pillow
-
-# Windows UI 自动化（核心引擎）
-uiautomation
-
-# Nuitka 打包建议安装（提升兼容性）
-zstandard
+# Nuitka 打包建议安装（提升兼容性，非运行时必需）
+zstandard==0.22.0
