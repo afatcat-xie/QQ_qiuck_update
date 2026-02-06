@@ -48,8 +48,7 @@ jobs:
 
       - name: Nuitka 自动打包
         # 更新了编译参数，以匹配 README.md 中的完整配置
-        run: echo yes | python -m nuitka --onefile --windows-disable-console --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui --include-package=uiautomation --include-data-dir=logs=logs --output-dir=dist GUI.py
-
+        run: echo yes | python -m nuitka --onefile --windows-disable-console --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui --include-package=uiautomation --output-dir=dist GUI.py
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
