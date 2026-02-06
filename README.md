@@ -71,17 +71,18 @@ pip install nuitka
 在项目根目录下执行以下命令：
 Run this command in the project root:
 
+
 ```bash
-python -m nuitka --onefile --windows-disable-console --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui --include-package=uiautomation --include-data-dir=logs=logs --output-dir=dist GUI.py
+python -m nuitka --onefile --windows-console-mode=disable --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui --include-package=uiautomation --nofollow-import-to=keyboard._mouse_tests --output-dir=dist GUI.py
 ```
 
 **参数解析 / Parameter Explanation:**
 
 * `--standalone`: 包含所有运行依赖。 / Include all runtime dependencies.
 * `--onefile`: 打包为单个 .exe 文件。 / Package into a single .exe.
-* `--windows-disable-console`: 隐藏背景黑框（只显示 GUI）。 / Hide the console window (GUI only).
+* `--windows-console-mode=disable`: 隐藏背景黑框（只显示 GUI）。 / Hide the console window (GUI only).
 * `--enable-plugin=tk-inter`: 确保窗口界面正常显示。 / Enable Tkinter plugin support.
-* `--include-data-dir=logs=logs`: 自动创建日志文件夹。 / Include and create the logs directory.
+* `--nofollow-import-to=keyboard._mouse_tests`: 避免打包 keyboard 库的测试模块，减少无用依赖和警告。 / Exclude keyboard's test modules to reduce warnings and unnecessary dependencies.
 * `--include-package`: 导入所有第三方库。 / Include all third-party packages.
 ---
 
