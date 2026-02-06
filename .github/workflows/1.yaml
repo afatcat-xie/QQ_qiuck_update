@@ -48,7 +48,7 @@ jobs:
 
       - name: Nuitka 自动打包
         # 更新参数，使用 --windows-console-mode=disable 替代 --windows-disable-console
-        run: echo yes | python -m nuitka --onefile --windows-console-mode=disable --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui --include-package=uiautomation --nofollow-import-to=keyboard._mouse_tests --output-dir=dist GUI.py
+        run: echo yes | python -m nuitka --onefile --windows-console-mode=disable --standalone --enable-plugin=tk-inter --include-package=openai --include-package=PIL --include-package=keyboard --include-package=pystray --include-package=pygetwindow --include-package=pyautogui  --windows-icon-from-ico=icon.ico --include-package=uiautomation --nofollow-import-to=keyboard._mouse_tests --enable-plugin=anti-bloat --nofollow-import-to=unittest --nofollow-import-to="*test*" --output-dir=dist GUI.py
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
