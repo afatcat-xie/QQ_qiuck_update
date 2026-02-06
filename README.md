@@ -13,8 +13,8 @@ This project is a multi-functional assistant tool based on Python, supporting tw
 
 * **极速刷屏模式 (Normal Mode)**: 在聊天窗口内循环发送指定长度的随机字符串。
 Rapidly sends random strings of a specified length in a loop within the chat window.
-* **AI 智能模式 (AI Mode)**: **[新增]** 自动捕获聊天窗口截图，通过 OpenAI 的视觉模型（Vision）分析对话内容并自动生成回复。
-**[NEW]** Automatically captures chat window screenshots, analyzes conversations via OpenAI Vision models, and generates intelligent replies.
+* **AI 智能模式 (AI Mode)**: **[新增]** 自动捕获聊天窗口截图，通过 OpenAI 的视觉模型（Vision）分析对话内容。现在，群聊名称的识别优先通过获取 QQ 程序输入框的控件名称而非 OCR，以提高准确性并降低对屏幕截图质量的依赖，并自动生成回复。
+**[NEW]** Automatically captures chat window screenshots and analyzes conversations via OpenAI Vision models. Now, group chat names are primarily identified by obtaining the control name of the QQ input box rather than OCR, improving accuracy and reducing reliance on screenshot quality, then generates intelligent replies.
 
 ---
 
@@ -31,7 +31,7 @@ python -m venv venv
 
 2. **安装所有必要依赖 / Install dependencies:**
 ```bash
-pip install keyboard Pillow pystray uiautomation pygetwindow pyautogui openai
+pip install keyboard==0.13.5 pystray==0.19.5 Pillow==10.2.0 uiautomation==2.0.0 pygetwindow==0.0.9 pyautogui==0.9.54 openai==1.12.0 zstandard==0.22.0
 ```
 
 
@@ -40,8 +40,10 @@ pip install keyboard Pillow pystray uiautomation pygetwindow pyautogui openai
 
 ## 3. 核心功能 / Key Features
 
-* **AI 读屏回复 (AI Vision Reply)**: 自动定位 QQ 窗口并截图，利用 GPT-4o 等模型理解对话并回信。
-Auto-locates QQ, takes screenshots, and uses GPT-4o to understand and reply.
+* **AI 智能识别 (AI Smart Recognition)**: 自动定位 QQ 窗口并截图，利用 GPT-4o 等模型理解对话内容。群聊名称现在优先通过 QQ 输入框控件名识别，而非完全依赖 OCR。
+Auto-locates QQ, takes screenshots, and uses GPT-4o to understand conversations. Group chat names are now primarily identified via QQ input box control names, rather than solely relying on OCR.
+* **即时停止热键 (Immediate Stop Hotkey)**: 在 AI 模式运行时，按下 `Ctrl+Alt+Q` 可立即停止所有进行中的 AI 任务（如截图、OCR、生成回复等）。
+When AI mode is running, pressing `Ctrl+Alt+Q` will immediately stop all ongoing AI tasks (e.g., screenshots, OCR, reply generation).
 * **对话记忆 (Context Memory)**: 支持保存最近 15 条对话记录，让 AI 回复更具逻辑。
 Maintains the last 15 conversation records for contextual AI replies.
 * **自动对齐 (Auto-Alignment)**: 启动时自动将 QQ 窗口移动至屏幕右侧，确保截图区域精确。
@@ -89,8 +91,8 @@ python -m nuitka --onefile --windows-disable-console --standalone --enable-plugi
 2. **配置 / Setup**: 在界面输入 **OpenAI API Key** 并勾选 **AI Mode**。
 3. **准备窗口 / Preparation**: 确保 QQ 聊天窗口在桌面上可见（不要最小化）。
 4. **快捷键 / Hotkeys**:
-* `Ctrl+Alt+Q`: **开始运行 (Start)**
-* `Ctrl+Alt+Q`: **停止运行 (Stop)**
+* `Ctrl+Alt+Q`: **开始/停止运行 (Start/Stop)** - 在 AI 模式运行时，此快捷键可立即停止所有进行中的 AI 任务。
+* `Ctrl+Alt+Q`: **Start/Stop** - When AI mode is running, this hotkey will immediately stop all ongoing AI tasks.
 
 
 
