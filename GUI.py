@@ -43,6 +43,7 @@ chat_context = []
 MAX_CONTEXT_LINES = 15 # How many recent screenshot records to show the AI | 给AI看最近多少次截图记录
 MAX_REPLY_LENGTH = 20# New: Maximum character limit for AI replies | 新增：AI回复的最大字符数限制
 last_processed_chat_name = "" # New: Records the name of the last processed chat, used for detecting switches | 新增：记录上一次处理的聊天名称，用于检测切换
+previous_detection = None  # Holds last detection result (group and messages) for merging/diffing | 上一次检测结果，用于合并/对比
 
 # Event to signal immediate stop of worker/AI actions (used by hotkey to abort ongoing work)
 stop_event = threading.Event()
@@ -196,6 +197,181 @@ def image_to_base64(image_path):
             image64 = base64.b64encode(image_file.read()).decode()
     except Exception as e:
         return f"Conversion failed: {e} | 转换失败: {e}"
+
+# ---------- New: UI-based detection and storage helpers ----------
+def _clean_name_ui(name_str):
+    """Clean window/control name similar to mouse_control_monitor.py behavior."""
+    if not name_str:
+        return ""
+    return name_str.split('(')[0].strip()
+
+
+def _gather_text_controls(window):
+    """Recursively gather text-like child controls and return list of (control, name, rect)."""
+    controls = []
+    try:
+        stack = [window]
+        while stack:
+            node = stack.pop()
+            try:
+                for child in node.GetChildren():
+                    stack.append(child)
+                    ctype = getattr(child, 'ControlTypeName', '')
+                    if ctype in ('TextControl', 'EditControl', 'DocumentControl', 'ListItem'):
+                        name = getattr(child, 'Name', '')
+                        rect = getattr(child, 'BoundingRectangle', None)
+                        controls.append((child, name, rect))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return controls
+
+
+def detect_chat_via_ui(window):
+    """Detect group chat name and messages via UI controls.
+    Returns: {'group_name': str, 'messages': [{'sender':str,'content':str}, ...]} or None
+    """
+    try:
+        # 1. Determine group chat name: first try EditControl inside window, otherwise top-level window name
+        group_name = None
+        for child in window.GetChildren():
+            try:
+                if child.ControlTypeName == 'EditControl' and getattr(child, 'Name', None) and child.Name != 'QQ':
+                    group_name = _clean_name_ui(child.Name)
+                    break
+            except Exception:
+                continue
+        if not group_name:
+            win_name = getattr(window, 'Name', '')
+            group_name = _clean_name_ui(win_name)
+
+        # 2. Gather message-like controls
+        text_controls = _gather_text_controls(window)
+        messages = []
+        for control, name, rect in text_controls:
+            if not name or not str(name).strip():
+                continue
+            content = str(name).strip()
+            sender = ""
+            # try to get sender by sampling point (left-5, top-5)
+            try:
+                if rect and len(rect) >= 4:
+                    left, top = rect[0], rect[1]
+                    sample_x = max(0, int(left) - 5)
+                    sample_y = max(0, int(top) - 5)
+                    try:
+                        sender_control = auto.ControlFromPoint(sample_x, sample_y)
+                        if sender_control and getattr(sender_control, 'Name', None):
+                            sender = _clean_name_ui(sender_control.Name)
+                    except Exception:
+                        sender = ""
+            except Exception:
+                sender = ""
+
+            messages.append({'sender': sender, 'content': content})
+
+        return {'group_name': group_name or 'QQ', 'messages': messages}
+    except Exception as e:
+        log_info(f"detect_chat_via_ui error: {e}")
+        return None
+
+
+def _dedupe_messages_preserve_order(old_list, new_list):
+    """Merge two message lists while removing duplicates (sender+content)."""
+    seen = set()
+    merged = []
+    for m in old_list + new_list:
+        key = (m.get('sender',''), m.get('content',''))
+        if key not in seen:
+            seen.add(key)
+            merged.append(m)
+    return merged
+
+
+def _sanitize_filename(name):
+    return ''.join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in name).strip()
+
+
+def _write_history_file(group_name, messages, mode='w'):
+    try:
+        safe_name = _sanitize_filename(group_name or 'QQ')
+        file_path = os.path.join(os.path.dirname(__file__), f"{safe_name}-history.txt")
+        with open(file_path, mode, encoding='utf-8') as f:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if mode == 'w':
+                f.write(f"--- New History File for {group_name} | 创建时间: {timestamp} ---\n")
+            else:
+                f.write(f"\n--- Append Time: {timestamp} ---\n")
+            for msg in messages:
+                f.write(f"{msg.get('sender','')}: {msg.get('content','')}\n")
+        log_info(f"Saved history to {file_path} (mode={mode}). | 已保存历史到 {file_path} (模式={mode})")
+        return file_path
+    except Exception as e:
+        log_info(f"Failed to write history file for {group_name}: {e}")
+        return None
+
+
+def process_detection_and_store(window, current_chat_name_hint):
+    """Perform detection, manage file creation/appending, merging and determine whether to trigger AI reply.
+    Rules:
+      - If group differs from last_processed_chat_name: re-run detection, create new file and store (do NOT send to AI immediately).
+      - If group equals last_processed_chat_name: append non-duplicate messages, update file and return True (signal to send AI).
+    """
+    global last_processed_chat_name, previous_detection, chat_context
+
+    result = detect_chat_via_ui(window)
+    if not result:
+        log_info("UI detection returned no result.")
+        return False
+
+    group = result.get('group_name', 'QQ')
+    messages = result.get('messages', [])
+
+    # If group changed since last processed, do a confirmatory second detection and create new file
+    if group != last_processed_chat_name:
+        log_info(f"Group changed or first detection: '{last_processed_chat_name}' -> '{group}'. Running confirmatory detection and creating new history file.")
+        _time.sleep(0.5)
+        confirm = detect_chat_via_ui(window)
+        confirm_msgs = confirm.get('messages', []) if confirm else []
+        merged = _dedupe_messages_preserve_order(messages, confirm_msgs)
+        _write_history_file(group, merged, mode='w')
+        last_processed_chat_name = group
+        previous_detection = {'group': group, 'messages': merged}
+        # Update chat_context to the new group initial state
+        chat_context.clear()
+        chat_context.append(group)
+        for m in merged:
+            chat_context.append(f"{m.get('sender','')}: {m.get('content','')}")
+        log_info(f"Created new history for '{group}' with {len(merged)} messages. | 新建 '{group}' 历史，共 {len(merged)} 条消息。")
+        return False  # Do not trigger AI on first detection after group change
+
+    # If same group as last processed, append non-duplicate messages and trigger AI
+    # Compare previous_detection messages to find new ones
+    prev_msgs = previous_detection.get('messages', []) if previous_detection and previous_detection.get('group','') == group else []
+    # identify new messages that are not duplicates
+    prev_set = set((m.get('sender',''), m.get('content','')) for m in prev_msgs)
+    new_msgs = [m for m in messages if (m.get('sender',''), m.get('content','')) not in prev_set]
+
+    if not new_msgs:
+        log_info(f"No new messages detected for group '{group}'. Skipping append. | 未检测到新消息，跳过追加。")
+        return False
+
+    # Merge and append to file
+    merged = _dedupe_messages_preserve_order(prev_msgs, new_msgs)
+    _write_history_file(group, new_msgs, mode='a')
+
+    # Update previous_detection and chat_context
+    previous_detection = {'group': group, 'messages': merged}
+    chat_context.clear()
+    chat_context.append(group)
+    for m in merged:
+        chat_context.append(f"{m.get('sender','')}: {m.get('content','')}")
+
+    log_info(f"Appended {len(new_msgs)} new messages to '{group}'. Will trigger AI reply. | 已追加 {len(new_msgs)} 条新消息到 '{group}'，将触发 AI 回复。")
+    return True
+
+# ---------- End new helpers ----------
 
 def capture_qq_with_padding(reposition_right_if_needed=False):
     windows = gw.getWindowsWithTitle('QQ')
@@ -459,20 +635,44 @@ def worker_logic():
                                     if stop_event.is_set():
                                         log_info("Stop requested before OCR, aborting AI actions. | 在OCR前收到停止请求，放弃AI操作。")
                                         break
-                                    current_ocr_text = AI1_OCR()
-                                    log_info(f"OCR Recognition Result:\n{current_ocr_text} | OCR识别结果:\n{current_ocr_text}")
-                                    
+                                    # Switch to UI-based detection flow instead of OCR-first
+                                    try:
+                                        should_trigger_ai = process_detection_and_store(qq_window, current_chat_name_from_title)
+                                    except Exception as e:
+                                        log_info(f"UI detection processing error: {e}")
+                                        should_trigger_ai = False
+
+                                    # Set a flag that later code will use to decide whether to generate/send AI reply
+                                    if should_trigger_ai:
+                                        ocr_chat_name_hint = current_chat_name_from_title
+                                        proceed_with_reply = True
+                                    else:
+                                        ocr_chat_name_hint = None
+                                        # Fallback: if OCR ran and provided text, use OCR deduplication check
+                                        proceed_with_reply = False
+                                        if 'current_ocr_text' in locals():
+                                            chat_content_for_deduplication = current_ocr_text
+                                            try:
+                                                proceed_with_reply = _update_chat_history_with_deduplication(current_chat_name_from_title, chat_content_for_deduplication)
+                                            except Exception as e:
+                                                log_info(f"Dedup check failed: {e}")
+
                                     # --- Use EditControl / window title as chat name hint (no longer using OCR for name) ---
-                                    ocr_chat_name_hint = current_chat_name_from_title
+                                    if 'ocr_chat_name_hint' not in locals() or ocr_chat_name_hint is None:
+                                        ocr_chat_name_hint = current_chat_name_from_title
                                     log_info(f"Using EditControl/window title as group chat name: {ocr_chat_name_hint} | 使用输入框控件名/窗口标题作为群聊名称: {ocr_chat_name_hint}")
                                         
-                                    # The full OCR text (with original line breaks) will be used for deduplication.
-                                    chat_content_for_deduplication = current_ocr_text
-                                    # --- End OCR chat name slice and content splitting | 结束 OCR 聊天名称切片和内容拆分 ---
+                                    # Determine whether to proceed with reply. OCR fallback is supported for legacy flow.
+                                    if 'current_ocr_text' in locals():
+                                        try:
+                                            proceed_with_reply = _update_chat_history_with_deduplication(current_chat_name_from_title, current_ocr_text)
+                                        except Exception as e:
+                                            log_info(f"Dedup check failed: {e}")
 
-                                    # 3. Update history and judge if there's new content, only consider replying when new content appears
-                                    # 3. 更新历史并判断是否有新内容，只有在新内容出现时才考虑回复
-                                    if _update_chat_history_with_deduplication(ocr_chat_name_hint, chat_content_for_deduplication): 
+                                    if not ('proceed_with_reply' in locals() and proceed_with_reply):
+                                        log_info("Skipping reply generation because no new UI/OCR-based messages. | 无需生成回复。")
+                                        update_status("Monitoring (no necessary reply) | 监控中 (非必要回复)", "blue")
+                                    else:
                                         log_info(f"History for '{last_processed_chat_name}' updated, generating reply... | 已更新 '{last_processed_chat_name}' 的历史记录，生成回复中...")
                                         # 4. Generate reply based on history | 4. 基于历史生成回复
                                         # Pass ocr_chat_name_hint to AI2_Generate_Reply (Note: API key replaced with placeholder)
@@ -540,9 +740,7 @@ def worker_logic():
                                         else:
                                             log_info("AI decided to remain silent (PASS). | AI 决定保持沉默 (PASS)。")
                                             update_status("AI standby (no reply) | AI 待机中 (无回复)", "blue")
-                                    else:
-                                        log_info("No new message or content is duplicated with previous record, skipping reply. | 无新消息或内容与上一记录重复，跳过回复。")
-                                        update_status("Monitoring (no necessary reply) | 监控中 (非必要回复)", "blue")
+
 
                                 # If no AI reply was made this round, set the last OCR result as the baseline for the next round
                                 # 如果本轮没有进行 AI 回复，则将上次 OCR 结果作为下一轮的基准
