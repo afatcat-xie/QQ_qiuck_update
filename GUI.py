@@ -21,6 +21,37 @@ import pygetwindow as gw
 import pyautogui
 from openai import OpenAI
 import base64
+import sys
+
+# redirect stdout and stderr to logfile as well
+class TeeWriter:
+    def __init__(self, original, file_handle):
+        self.original = original
+        self.file_handle = file_handle
+
+    def write(self, message):
+        try:
+            self.original.write(message)
+        except Exception:
+            pass
+        try:
+            if self.file_handle:
+                self.file_handle.write(message)
+                self.file_handle.flush()
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+        try:
+            if self.file_handle:
+                self.file_handle.flush()
+        except Exception:
+            pass
+
 
 # ---------- Global variables | 全局变量 ----------
 running = False
@@ -38,33 +69,59 @@ saved_name = "User" # Default value | 默认值
 image64 = ""    
 api_key_global = "" # New: Global API Key variable | 新增：全局API密钥变量
 
+# (previous docking-tracking logic removed, no longer needed)
+
+# remember the baseline QQ.exe window rectangle after first start hotkey
+# 在第一次启动热键后记录QQ.exe窗口的基准位置
+qq_initial_rect = None
+
 # New: Conversation history list | 新增：对话历史列表
 chat_context = [] 
 MAX_CONTEXT_LINES = 15 # How many recent screenshot records to show the AI | 给AI看最近多少次截图记录
 MAX_REPLY_LENGTH = 150 # New: Maximum character limit for AI replies | 新增：AI回复的最大字符数限制
 last_processed_chat_name = "" # New: Records the name of the last processed chat, used for detecting switches | 新增：记录上一次处理的聊天名称，用于检测切换
 
+# Event used to block processing until we have extracted a chat name under the mouse pointer
+chat_name_ready = threading.Event()
+
 INI_FILE = "qq_config.ini"
 LOG_DIR = "logs"
 HISTORY_FILE = "chat_history.txt" # New: History record file | 新增：历史记录文件
 
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
+# ensure log directory exists (with error handling)
+try:
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+except Exception as e:
+    print(f"Failed to create log directory '{LOG_DIR}': {e}")
 
-# Log initialization | 日志初始化
-log_filename = f"qq_monitor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+# Log initialization using UTC timestamp | 日志初始化 (使用 UTC 时间戳)
+start_utc = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+log_filename = f"qq_monitor_{start_utc}.log"
 LOG_FILE = os.path.join(LOG_DIR, log_filename)
-log_fp = open(LOG_FILE, "a", encoding="utf-8")
+try:
+    log_fp = open(LOG_FILE, "a", encoding="utf-8")
+except Exception as e:
+    log_fp = None
+    print(f"Failed to open log file '{LOG_FILE}': {e}")
+
+# redirect standard output and error to the log file as well
+if log_fp:
+    sys.stdout = TeeWriter(sys.stdout, log_fp)
+    sys.stderr = TeeWriter(sys.stderr, log_fp)
 
 def log_info(message):
     """Thread-safe logging | 线程安全的日志记录"""
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.utcnow().strftime("%H:%M:%S")
+    full_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     formatted_message = f"[{timestamp}] {message}"
     
     if log_fp:
-        log_fp.write(f"[{full_timestamp}] [LOG] {message}\n")
-        log_fp.flush()
+        try:
+            log_fp.write(f"[{full_timestamp}] [LOG] {message}\n")
+            log_fp.flush()
+        except Exception:
+            pass
     
     if log_display and root:
         try:
@@ -75,17 +132,76 @@ def log_info(message):
         except: pass
     print(formatted_message)
 
+
+def clean_name(name_str):
+    """Strip trailing parentheses content and whitespace, mimicking mouse_control_monitor logic."""
+    if not name_str:
+        return ""
+    return name_str.split('(')[0].strip()
+
+
+def detect_chat_identity(element):
+    """Given a UIAutomation element, return a cleaned chat/group name if available.
+    This mirrors the logic in mouse_control_monitor.get_logic_context.
+    """
+    try:
+        window = element.GetTopLevelControl()
+        if window:
+            win_name = window.Name or ""
+            # if it's a QQ window we try deeper detection
+            if "QQ" in win_name:
+                # if the element itself is an edit control with a name
+                if element.ControlTypeName == 'EditControl' and element.Name and element.Name != 'QQ':
+                    return clean_name(element.Name)
+                # otherwise search children
+                for child in window.GetChildren():
+                    if child.ControlTypeName == 'EditControl' and child.Name and child.Name != 'QQ':
+                        return clean_name(child.Name)
+                # fallback to cleaned window title
+                return clean_name(win_name)
+            else:
+                # non-QQ window, return cleaned title
+                return clean_name(win_name)
+    except Exception:
+        pass
+    return ""
+
+
+def detect_chat_name_from_point():
+    """Use current mouse coordinates to detect chat identity via underlying control."""
+    try:
+        x, y = pyautogui.position()
+        ctrl = auto.ControlFromPoint(x, y)
+        if not ctrl:
+            return ""
+        # only consider EditControl for performance
+        if ctrl.ControlTypeName != 'EditControl':
+            log_info(f"Mouse control is {ctrl.ControlTypeName}, not EditControl – ignoring")
+            return ""
+        name = detect_chat_identity(ctrl)
+        if name:
+            log_info(f"Control under mouse yields name '{name}'")
+            return name
+    except Exception as e:
+        log_info(f"Failed to get control under mouse: {e}")
+    return ""
+
+
+def get_chat_name_from_mouse():
+    """Deprecated wrapper pointing to detect_chat_name_from_point."""
+    return detect_chat_name_from_point()
+
 def update_status(text, color):
     """Updates the status label on the GUI | 更新 GUI 上的状态标签"""
     if root and status_label:
         root.after(0, lambda: status_label.config(text=f"Status: {text} | 状态: {text}", fg=color))
 
 # ---------- History Record Management (New) | 历史记录管理 (新增) ----------
-def update_chat_history(new_text):
+def update_chat_history(new_text, chat_name=""):
     """
-    Saves OCR results to file and memory.
+    Saves OCR results to file and memory, tagging each entry with the associated chat/group name.
     Simple deduplication logic: if a new block of text is identical to the last, it won't be saved.
-    保存 OCR 结果到文件和内存。
+    保存 OCR 结果到文件和内存，同时标记每条记录所属的聊天/群名。
     简单的去重逻辑：如果新的一段文字和上一段完全一样，就不保存。
     """
     global chat_context
@@ -95,14 +211,17 @@ def update_chat_history(new_text):
 
     # Remove leading/trailing whitespace | 去除首尾空格
     clean_text = new_text.strip()
+    entry_text = clean_text
+    if chat_name:
+        entry_text = f"[{chat_name}] {clean_text}"
     
     # Check if it's identical to the previous record | 检查是否和上一条记录完全重复
-    if chat_context and chat_context[-1] == clean_text:
+    if chat_context and chat_context[-1] == entry_text:
         # log_info("Overall text is duplicated, not updating chat history.") # Reduce log output, just skip simply | 减少日志输出，仅做简单跳过
         return False # Content duplicated, no update | 内容重复，不更新
         
     # Add to in-memory list | 添加到内存列表
-    chat_context.append(clean_text)
+    chat_context.append(entry_text)
     
     # Keep the in-memory list from getting too long to prevent Token explosion | 保持内存列表不要太长，防止Token爆炸
     if len(chat_context) > MAX_CONTEXT_LINES:
@@ -113,7 +232,7 @@ def update_chat_history(new_text):
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"\n--- [Record Time: {timestamp} | 记录时间: {timestamp}] ---\n")
-            f.write(clean_text)
+            f.write(entry_text)
             f.write("\n")
         print(f"Chat history updated, current cache entries: {len(chat_context)} | 历史记录已更新，当前缓存条数: {len(chat_context)}")
         return True # Update successful | 更新成功
@@ -148,6 +267,7 @@ def image_to_base64(image_path):
         return f"Conversion failed: {e} | 转换失败: {e}"
 
 def capture_qq_with_padding(reposition_right_if_needed=False):
+    global qq_initial_rect
     windows = gw.getWindowsWithTitle('QQ')
     if not windows:
         log_info("QQ window not found. | 未找到QQ窗口。")
@@ -155,38 +275,38 @@ def capture_qq_with_padding(reposition_right_if_needed=False):
     
     qq = windows[0]
     
+    # if we have remembered a baseline rect, validate it now
+    if qq_initial_rect is not None:
+        current_rect = (qq.left, qq.top, qq.width, qq.height)
+        if current_rect != qq_initial_rect or not qq.isActive:
+            log_info("QQ window moved or covered; attempting to reactivate/switch. | QQ窗口位置变化或被覆盖，尝试重新激活。")
+            try:
+                qq.activate()
+            except Exception:
+                pass
+            _time.sleep(0.5)
+            # update baseline regardless of result; subsequent loops will use this
+            qq_initial_rect = (qq.left, qq.top, qq.width, qq.height)
+            log_info(f"New baseline QQ window rect: {qq_initial_rect}")
+
     if qq.isMinimized:
         qq.restore()
     qq.activate()
     _time.sleep(0.5) # Allow activation to settle
 
     if reposition_right_if_needed:
-        screen_width, screen_height = pyautogui.size()
-        right_half_left_edge_target = screen_width / 2
-        
-        # Check if QQ window is approximately snapped to the right half
-        # We allow a small tolerance for pixel variations
-        # 检查QQ窗口是否大致吸附到右半边
-        # 我们允许像素变化有小的容差
-        is_snapped_right = False
-        if abs(qq.left - right_half_left_edge_target) < 10 and abs(qq.width - right_half_left_edge_target) < 10:
-             is_snapped_right = True
-
-        if not is_snapped_right:
-            log_info("QQ window is not on the right or not properly docked, executing Win+Right shortcut to adjust position. | QQ窗口不在右侧或未正确停靠，执行Win+Right快捷键以调整位置。")
-            keyboard.press_and_release('win+right')
-            _time.sleep(0.8) # Wait for window to reposition
-            # Re-get window object after repositioning to update its coordinates
-            # 重新获取窗口对象以在重定位后更新其坐标
-            windows = gw.getWindowsWithTitle('QQ')
-            if windows:
-                qq = windows[0]
-            else:
-                log_info("Warning: QQ window disappeared after repositioning. Skipping screenshot. | 警告: QQ窗口在调整位置后消失。跳过截图。")
-                return False
+        # simply apply the Win+Right shortcut whenever repositioning is requested
+        log_info("Repositioning QQ window using Win+Right per request. | 根据要求使用 Win+Right 重定位 QQ 窗口。")
+        keyboard.press_and_release('win+right')
+        _time.sleep(0.8)
+        # refresh window reference in case geometry changed
+        windows = gw.getWindowsWithTitle('QQ')
+        if windows:
+            qq = windows[0]
         else:
-            log_info("QQ window is already on the right and properly docked, skipping Win+Right shortcut. | QQ窗口已在右侧并正确停靠，跳过Win+Right快捷键。")
-            
+            log_info("Warning: QQ window disappeared after repositioning. Skipping screenshot. | 警告: QQ窗口在调整位置后消失。跳过截图。")
+            return False
+
     padding_side = 0.5
     try:
         # Use updated qq coordinates after potential repositioning | 使用可能重定位后的更新QQ坐标
@@ -233,7 +353,7 @@ def AI1_OCR():
         log_info(f"OCR Error: {e}")
         return ""
 
-def AI2_Generate_Reply(ocr_chat_name_hint=""): # New parameter ocr_chat_name_hint | 新增参数 ocr_chat_name_hint
+def AI2_Generate_Reply(ocr_chat_name_hint="", current_chat_name=""): # Added current_chat_name parameter for clarity
     """
     Reads historical records in chat_context to generate replies.
     读取 chat_context 中的历史记录，生成回复。
@@ -258,20 +378,25 @@ def AI2_Generate_Reply(ocr_chat_name_hint=""): # New parameter ocr_chat_name_hin
 
     # Build AI's current chat environment information | 构建AI的当前聊天环境信息
     current_identity_for_ai = ""
-    if ocr_chat_name_hint:
-        current_identity_for_ai = f"The current chat object/group chat mainly appears as 【{ocr_chat_name_hint}】. | 当前聊天对象/群聊主要显示为【{ocr_chat_name_hint}】。"
-        if last_processed_chat_name and last_processed_chat_name != "QQ" and last_processed_chat_name != ocr_chat_name_hint:
-            current_identity_for_ai += f"The window name detected by the system is 【{last_processed_chat_name}】. | 系统检测的窗口名称是【{last_processed_chat_name}】。"
-    elif last_processed_chat_name and last_processed_chat_name != "QQ":
-        current_identity_for_ai = f"The current chat name detected by the system is 【{last_processed_chat_name}】. | 系统检测的当前聊天名称是【{last_processed_chat_name}】。"
+    # choose the most relevant chat name to tell the AI, prefer explicit OCR hint if available
+    effective_name = ocr_chat_name_hint or current_chat_name or last_processed_chat_name
+    if effective_name and effective_name != "QQ":
+        current_identity_for_ai = f"The current chat object/group chat mainly appears as 【{effective_name}】. | 当前聊天对象/群聊主要显示为【{effective_name}】。"
     elif last_processed_chat_name == "QQ":
         current_identity_for_ai = "The current chat window title is the generic name 【QQ】. | 当前聊天窗口标题为通用名称【QQ】。"
 
+    # Inform the AI that each history fragment is prefixed with the chat/group name
+    prefix_info = (
+        "Each record in the history may start with a prefix like '[GroupName]' to indicate which chat or group it belongs to. "
+        "Please pay attention to that when understanding the conversation context. | "
+        "历史中的每条记录前可能会有类似 '[群名]' 的前缀，用以指示所属的聊天或群。理解对话上下文时请注意这一点。"
+    )
 
     system_prompt = f"""
 Ignore all LV*, they represent levels; only focus on the specific names that follow as roles. | 忽略所有LV*，它们是等级，只能关注后面的具体名称作为角色。
 You are a chat assistant. Your role is 【{saved_name}】, please reply from the perspective and identity of 【{saved_name}】. | 你是一个聊天助手。你的角色是【{saved_name}】，请以【{saved_name}】的视角和身份进行回复。
 {current_identity_for_ai}
+{prefix_info}
 You need to read the 【chat history fragments】 I provide. | 你需要阅读我提供的【聊天记录历史片段】。
 Note: These fragments are text from continuous time screenshots, so the content may have a lot of repetition (overlap). You need to ignore the repetitive parts yourself and clarify the conversation logic. | 注意：这些片段是连续时间的屏幕截图文字，因此内容可能会有大量重复（重叠），你需要自行忽略重复部分，理清对话逻辑。
 
@@ -303,7 +428,6 @@ Requirements: | 要求：
     except Exception as e:
         log_info(f"Generation Error: {e}")
         return ""
-
 def worker_logic():
     global running, last_processed_chat_name
     VALID_CONTROL_TYPES = ['EditControl']
@@ -315,7 +439,30 @@ def worker_logic():
     with auto.UIAutomationInitializerInThread(debug=False):
         log_info("Core monitoring engine started... | 核心监控引擎已启动...")
         
+        # before doing anything, try to obtain a chat name from whatever control the mouse is over
+        while running and not chat_name_ready.is_set():
+            name = get_chat_name_from_mouse()
+            if name:
+                global last_processed_chat_name
+                last_processed_chat_name = name
+                chat_name_ready.set()
+                log_info(f"Initial chat name obtained from mouse: {last_processed_chat_name}")
+                break
+            log_info("Waiting for chat name under mouse pointer...")
+            _time.sleep(0.5)
+
         while running:
+            # if chat name hasn't been determined yet, keep trying and sleep
+            if not chat_name_ready.is_set():
+                name = get_chat_name_from_mouse()
+                if name:
+                    last_processed_chat_name = name
+                    chat_name_ready.set()
+                    log_info(f"Chat name obtained from mouse: {last_processed_chat_name}")
+                else:
+                    _time.sleep(0.5)
+                    continue
+
             try:
                 el = auto.GetFocusedControl()
                 if not el:
@@ -335,15 +482,11 @@ def worker_logic():
                     except: win_title = "Unknown | 未知"
 
                     if win_title and "QQ" == win_title and "\\" not in win_title:
-                        # Extract main chat name from window title, used for status and switching judgment
-                        # 从窗口标题中提取主要聊天名称，用于状态和切换判断
-                        # E.g.: "Group Chat Name(12345)" -> "Group Chat Name"
-                        # 例如："群聊名称(12345)" -> "群聊名称"
-                        # "Contact Name" -> "Contact Name"
-                        # "联系人名称" -> "联系人名称"
-                        # "QQ" -> "QQ" (Generic Window)
-                        # "QQ" -> "QQ" (通用窗口)
-                        current_chat_name_from_title = win_title.split('(')[0].strip() if '(' in win_title else win_title.strip()
+                        # determine chat name using more thorough detection logic
+                        current_chat_name_from_title = detect_chat_identity(el)
+                        if not current_chat_name_from_title:
+                            # fallback to raw window title cleaning
+                            current_chat_name_from_title = clean_name(win_title)
                         
                         if current_chat_name_from_title != last_processed_chat_name:
                             log_info(f"Chat switch detected! From '{last_processed_chat_name if last_processed_chat_name else 'None | 无'}' to '{current_chat_name_from_title}'. | 检测到聊天切换！从 '{last_processed_chat_name if last_processed_chat_name else '无'}' 切换到 '{current_chat_name_from_title}'。")
@@ -351,6 +494,8 @@ def worker_logic():
                             chat_context.clear() # Clear conversation history when switching chats | 切换聊天时清空对话历史
                             last_ocr_words = [] # Clear word history when switching chats | 切换聊天时清空词汇历史
                             log_info("Chat history context cleared. | 已清空聊天历史上下文。")
+                            # clear readiness so that we will wait for mouse-based name next round
+                            chat_name_ready.clear()
 
                         if ctrl_type == 'DocumentControl':
                             update_status("Input prohibited in document area | 禁止在文档区输入", "red")
@@ -432,12 +577,12 @@ def worker_logic():
                                         log_info("New message detected at word level, considering generating a reply... | 检测到词汇级别的新消息，正在考虑生成回复...")
                                         # update_chat_history still handles overall text deduplication (against the last whole entry)
                                         # update_chat_history 仍然处理整体文本的去重（与上一整条）
-                                        if update_chat_history(current_ocr_text): 
-                                            log_info(f"History for '{last_processed_chat_name}' updated, generating reply... | 已更新 '{last_processed_chat_name}' 的历史记录，生成回复中...")
+                                        if update_chat_history(current_ocr_text, last_processed_chat_name): 
+                                            log_info(f"History for '{last_processed_chat_name}' updated (chat tagged), generating reply... | 已更新 '{last_processed_chat_name}' 的历史记录（已标记聊天），生成回复中...")
                                             # 4. Generate reply based on history | 4. 基于历史生成回复
                                             # Pass ocr_chat_name_hint to AI2_Generate_Reply (Note: API key replaced with placeholder)
                                             # 将 ocr_chat_name_hint 传递给 AI2_Generate_Reply (注意API密钥已替换为占位符)
-                                            reply_text = AI2_Generate_Reply(ocr_chat_name_hint=ocr_chat_name_hint)
+                                            reply_text = AI2_Generate_Reply(ocr_chat_name_hint=ocr_chat_name_hint, current_chat_name=last_processed_chat_name)
                                             
                                             # --- Limit AI reply max length --- | --- 限制 AI 回复的最大长度 ---
                                             if len(reply_text) > MAX_REPLY_LENGTH:
@@ -526,10 +671,12 @@ def worker_logic():
 
 # ---------- Tray and Configuration (Unchanged) | 托盘与配置 (保持不变) ----------
 def create_dummy_icon():
+    # return a simple placeholder icon (64x64) with an alpha channel
     width, height = 64, 64
-    images = Image.new('RGB', (width, height), color=(0, 120, 215))
+    # RGBA mode ensures the tray icon is correctly handled on Windows
+    images = Image.new('RGBA', (width, height), color=(0, 120, 215, 255))
     dc = ImageDraw.Draw(images)
-    dc.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+    dc.rectangle([16, 16, 48, 48], fill=(255, 255, 255, 255))
     return images
 
 def on_tray_quit(icon, item):
@@ -542,15 +689,43 @@ def show_window(icon, item):
     root.after(0, root.deiconify)
 
 def withdraw_window():
+    # hide the main Tk window and create a system tray icon
     root.withdraw()
     global tray_icon
-    image = create_dummy_icon()
-    if os.path.exists("icon.ico"):
-        try: image = Image.open("icon.ico")
-        except: pass
-    menu = (pystray.MenuItem('Show Window | 显示窗口', show_window), pystray.MenuItem('Exit Program | 退出程序', on_tray_quit))
+
+    # determine path of a shipped icon file relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    ico_path = os.path.join(script_dir, "icon.ico")
+
+    # load the image resource, fall back to dummy if missing or invalid
+    if os.path.exists(ico_path):
+        try:
+            image = Image.open(ico_path)
+        except Exception as e:
+            log_info(f"Failed to open icon file '{ico_path}': {e}")
+            image = create_dummy_icon()
+    else:
+        image = create_dummy_icon()
+
+    # ensure the image has an alpha channel for proper display
+    if image.mode != 'RGBA':
+        try:
+            image = image.convert('RGBA')
+        except Exception:
+            pass
+
+    menu = pystray.Menu(
+        pystray.MenuItem('Show Window | 显示窗口', show_window),
+        pystray.MenuItem('Exit Program | 退出程序', on_tray_quit)
+    )
+
     tray_icon = pystray.Icon("QQTool", image, "QQ Tool | QQ工具", menu)
-    threading.Thread(target=tray_icon.run, daemon=True).start()
+    # use built-in detached runner rather than manually starting a thread
+    try:
+        tray_icon.run_detached()
+    except Exception:
+        # fallback for older pystray versions: spawn a thread
+        threading.Thread(target=tray_icon.run, daemon=True).start()
 
 def load_config():
     global time_interval, send_with_ctrl, input_length, ai_mode, api_key_global
@@ -579,11 +754,20 @@ def save_config():
     with open(INI_FILE, 'w') as f: config.write(f)
 
 def toggle_worker():
-    global running, worker_thread
+    global running, worker_thread, qq_initial_rect
     if running:
         running = False
         update_status("Stopped | 已停止", "blue")
     else:
+        # when starting for the first time, capture current QQ window position
+        windows = gw.getWindowsWithTitle('QQ')
+        if windows:
+            qq = windows[0]
+            qq_initial_rect = (qq.left, qq.top, qq.width, qq.height)
+            log_info(f"Initial QQ window rect recorded: {qq_initial_rect}")
+        else:
+            log_info("Unable to record initial QQ window rect: no QQ.exe found.")
+
         running = True
         worker_thread = threading.Thread(target=worker_logic, daemon=True)
         worker_thread.start()
