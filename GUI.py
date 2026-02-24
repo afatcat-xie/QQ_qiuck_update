@@ -75,6 +75,12 @@ api_key_global = "" # New: Global API Key variable | 新增：全局API密钥变
 # 在第一次启动热键后记录QQ.exe窗口的基准位置
 qq_initial_rect = None
 
+# Global guard: if focus or mouse changes, all major functions should early-return error
+focus_changed = False
+baseline_focus_info = None
+baseline_mouse_pos = None
+MOUSE_MOVE_THRESHOLD = 3  # pixels
+
 # New: Conversation history list | 新增：对话历史列表
 chat_context = [] 
 MAX_CONTEXT_LINES = 15 # How many recent screenshot records to show the AI | 给AI看最近多少次截图记录
@@ -131,6 +137,67 @@ def log_info(message):
             ))
         except: pass
     print(formatted_message)
+
+
+def _serialize_control_info(ctrl):
+    try:
+        name = getattr(ctrl, 'Name', None) or ''
+        ctype = getattr(ctrl, 'ControlTypeName', None) or ''
+        try:
+            rect = getattr(ctrl, 'BoundingRectangle', None)
+        except Exception:
+            rect = None
+        return (str(name), str(ctype), str(rect))
+    except Exception:
+        return ('', '', '')
+
+
+def is_focus_or_mouse_changed():
+    """Compare current focused control and mouse position with baseline.
+    If baseline not set, treat as not changed.
+    """
+    global baseline_focus_info, baseline_mouse_pos
+    try:
+        cur_mouse = pyautogui.position()
+    except Exception:
+        cur_mouse = None
+
+    try:
+        cur_ctrl = auto.GetFocusedControl()
+    except Exception:
+        cur_ctrl = None
+
+    # If no baseline, nothing to compare yet
+    if baseline_focus_info is None or baseline_mouse_pos is None:
+        return False
+
+    # Compare mouse movement
+    if cur_mouse and baseline_mouse_pos:
+        dx = abs(cur_mouse[0] - baseline_mouse_pos[0])
+        dy = abs(cur_mouse[1] - baseline_mouse_pos[1])
+        if dx > MOUSE_MOVE_THRESHOLD or dy > MOUSE_MOVE_THRESHOLD:
+            return True
+
+    # Compare focused control info
+    cur_info = _serialize_control_info(cur_ctrl)
+    if cur_info != baseline_focus_info:
+        return True
+
+    return False
+
+
+def mark_focus_changed_if_needed():
+    """Set global focus_changed True if change detected and log it."""
+    global focus_changed
+    if focus_changed:
+        return
+    try:
+        if is_focus_or_mouse_changed():
+            focus_changed = True
+            log_info("Focus or mouse changed detected: entering guarded error mode. | 检测到焦点或鼠标变化：进入受保护的错误模式。")
+    except Exception as e:
+        # if detection fails, do not flip the flag but log
+        log_info(f"Focus-change detection failed: {e}")
 
 
 def clean_name(name_str):
@@ -209,6 +276,12 @@ def update_chat_history(new_text, chat_name=""):
     if not new_text or not new_text.strip():
         return False # Empty content does not update | 空内容不更新
 
+    # Guard: if focus/mouse changed, skip and return error-like False
+    mark_focus_changed_if_needed()
+    if focus_changed:
+        log_info("Update skipped: focus/mouse changed. | 更新跳过：焦点/鼠标已变化。")
+        return False
+
     # Remove leading/trailing whitespace | 去除首尾空格
     clean_text = new_text.strip()
     entry_text = clean_text
@@ -243,6 +316,11 @@ def update_chat_history(new_text, chat_name=""):
 # ---------- Core Detection and Auto-Send Logic | 核心检测与自动发送逻辑 ----------
 def crop_center_chat_no_header(image_path, output_path):
     try:
+        # Guard
+        mark_focus_changed_if_needed()
+        if focus_changed:
+            log_info("Cropping skipped: focus/mouse changed. | 裁剪跳过：焦点/鼠标已变化。")
+            return None
         img = Image.open(image_path)
         width, height = img.size
         # --- 1. Define left/right boundaries --- | --- 1. 定义左右边界 ---
@@ -261,6 +339,11 @@ def crop_center_chat_no_header(image_path, output_path):
 def image_to_base64(image_path):
     global image64
     try:
+        # Guard
+        mark_focus_changed_if_needed()
+        if focus_changed:
+            log_info("Image->base64 skipped: focus/mouse changed. | 图片转base64跳过：焦点/鼠标已变化。")
+            return "ERROR: focus or control changed"
         with open(image_path, "rb") as image_file:
             image64 = base64.b64encode(image_file.read()).decode()
     except Exception as e:
@@ -268,6 +351,11 @@ def image_to_base64(image_path):
 
 def capture_qq_with_padding(reposition_right_if_needed=False):
     global qq_initial_rect
+    # Guard: if focus/mouse changed, abort early
+    mark_focus_changed_if_needed()
+    if focus_changed:
+        log_info("Capture skipped: focus/mouse changed. | 截图跳过：焦点/鼠标已变化。")
+        return False
     windows = gw.getWindowsWithTitle('QQ')
     if not windows:
         log_info("QQ window not found. | 未找到QQ窗口。")
@@ -294,18 +382,9 @@ def capture_qq_with_padding(reposition_right_if_needed=False):
     qq.activate()
     _time.sleep(0.5) # Allow activation to settle
 
-    if reposition_right_if_needed:
-        # simply apply the Win+Right shortcut whenever repositioning is requested
-        log_info("Repositioning QQ window using Win+Right per request. | 根据要求使用 Win+Right 重定位 QQ 窗口。")
-        keyboard.press_and_release('win+right')
-        _time.sleep(0.8)
-        # refresh window reference in case geometry changed
-        windows = gw.getWindowsWithTitle('QQ')
-        if windows:
-            qq = windows[0]
-        else:
-            log_info("Warning: QQ window disappeared after repositioning. Skipping screenshot. | 警告: QQ窗口在调整位置后消失。跳过截图。")
-            return False
+    # Note: runtime repositioning disabled. The program will only perform
+    # a single Win+Right at startup (handled in toggle_worker) to snap the QQ
+    # window into place. This avoids changing window placement during monitoring.
 
     padding_side = 0.5
     try:
@@ -332,6 +411,12 @@ def AI1_OCR():
         base_url="https://api.siliconflow.cn/v1"
     )
     
+    # Guard: if focus/mouse changed, abort and return error string
+    mark_focus_changed_if_needed()
+    if focus_changed:
+        log_info("OCR skipped: focus/mouse changed. | OCR 跳过：焦点/鼠标已变化。")
+        return "ERROR: focus or control changed"
+
     try:
         response_obj = client.chat.completions.create(
             model="deepseek-ai/DeepSeek-OCR",
@@ -369,6 +454,12 @@ def AI2_Generate_Reply(ocr_chat_name_hint="", current_chat_name=""): # Added cur
         api_key=api_key_global, # Use global API key variable | 使用全局API密钥变量
         base_url="https://api.siliconflow.cn/v1"
     )
+
+    # Guard: if focus/mouse changed, abort and return empty error-like string
+    mark_focus_changed_if_needed()
+    if focus_changed:
+        log_info("Reply generation skipped: focus/mouse changed. | 生成回复跳过：焦点/鼠标已变化。")
+        return "ERROR: focus or control changed"
 
     # Concatenate recent OCR results as context
     # Tell the AI there might be repetitive content and let it sort out the conversation logic itself
@@ -451,6 +542,19 @@ def worker_logic():
             log_info("Waiting for chat name under mouse pointer...")
             _time.sleep(0.5)
 
+        # Establish baseline focused control and mouse position for change detection
+        try:
+            baseline_ctrl = auto.GetFocusedControl()
+            global baseline_focus_info, baseline_mouse_pos
+            baseline_focus_info = _serialize_control_info(baseline_ctrl)
+        except Exception:
+            baseline_focus_info = None
+        try:
+            baseline_mouse_pos = pyautogui.position()
+        except Exception:
+            baseline_mouse_pos = None
+        log_info(f"Baseline focus info set: {baseline_focus_info}, mouse: {baseline_mouse_pos}")
+
         while running:
             # if chat name hasn't been determined yet, keep trying and sleep
             if not chat_name_ready.is_set():
@@ -464,6 +568,13 @@ def worker_logic():
                     continue
 
             try:
+                # Continuously check for focus/mouse change and mark flag if detected
+                mark_focus_changed_if_needed()
+                if focus_changed:
+                    # If focus changed, force skip heavy processing and continue (functions will early-return)
+                    update_status("Error: focus/mouse changed, paused | 错误: 焦点/鼠标变化，已暂停", "red")
+                    _time.sleep(0.5)
+                    continue
                 el = auto.GetFocusedControl()
                 if not el:
                     update_status("Waiting for focus | 等待焦点", "orange")
@@ -759,14 +870,56 @@ def toggle_worker():
         running = False
         update_status("Stopped | 已停止", "blue")
     else:
-        # when starting for the first time, capture current QQ window position
+        # Attempt a single Win+Right to snap the QQ window to the right once at startup
         windows = gw.getWindowsWithTitle('QQ')
         if windows:
-            qq = windows[0]
-            qq_initial_rect = (qq.left, qq.top, qq.width, qq.height)
-            log_info(f"Initial QQ window rect recorded: {qq_initial_rect}")
+            try:
+                log_info("Applying one-time Win+Right to snap QQ window to the right. | 启动时执行一次 Win+Right 将 QQ 窗口靠右。")
+                keyboard.press_and_release('win+right')
+                _time.sleep(0.8)
+            except Exception:
+                pass
+
+            # refresh window reference after attempting to snap
+            windows = gw.getWindowsWithTitle('QQ')
+            if windows:
+                qq = windows[0]
+                qq_initial_rect = (qq.left, qq.top, qq.width, qq.height)
+                log_info(f"Initial QQ window rect recorded: {qq_initial_rect}")
+            else:
+                log_info("Unable to record initial QQ window rect: no QQ.exe found.")
         else:
             log_info("Unable to record initial QQ window rect: no QQ.exe found.")
+
+        # Prompt user to keep the QQ window and mouse still and to place mouse over the input box
+        try:
+            messagebox.showinfo(
+                "Tip | 提示",
+                "请手动调整QQ窗口位置为靠右（win+right），请将鼠标放到输入框上并保持窗口与鼠标不动，然后点击确定开始。"
+            )
+            # Give the user a 10-second adjustment period; update status each second
+            for remaining in range(10, 0, -1):
+                update_status(f"Adjustment: {remaining}s left | 调整剩余 {remaining}s", "orange")
+                log_info(f"Adjustment countdown: {remaining} seconds remaining. | 调整倒计时：{remaining}秒。")
+                _time.sleep(1)
+        except Exception:
+            pass
+
+        # After adjustment period, record baseline focus and mouse position for change detection
+        try:
+            global baseline_focus_info, baseline_mouse_pos
+            try:
+                baseline_ctrl = auto.GetFocusedControl()
+                baseline_focus_info = _serialize_control_info(baseline_ctrl)
+            except Exception:
+                baseline_focus_info = None
+            try:
+                baseline_mouse_pos = pyautogui.position()
+            except Exception:
+                baseline_mouse_pos = None
+            log_info(f"Post-adjustment baseline set: {baseline_focus_info}, mouse: {baseline_mouse_pos}")
+        except Exception as e:
+            log_info(f"Failed to set baseline after adjustment: {e}")
 
         running = True
         worker_thread = threading.Thread(target=worker_logic, daemon=True)
