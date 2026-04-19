@@ -50,8 +50,8 @@ cd QQ_qiuck_update
 pip install -r requirements.txt
 
 # 运行
-python GUI.py## 📖 使用指南
-
+python GUI.py
+```
 ### 基本设置
 
 1. **启动应用** - 运行 GUI.exe 或 python GUI.py
@@ -92,7 +92,7 @@ python GUI.py## 📖 使用指南
 ## 📋 配置文件格式
 
 ### qq_config.ini
-`ini
+```bash
 [Settings]
 interval = 1.0
 input_length = 10
@@ -100,7 +100,7 @@ send_with_ctrl = False
 enable_dictionary_mode = True
 dictionary_files = path/to/dict1.txt;path/to/dict2.txt
 dictionary_enabled = path/to/dict1.txt=True;path/to/dict2.txt=False
-`
+```
 
 ### 字典文件格式 (.txt)
 `
@@ -128,21 +128,22 @@ dictionary_enabled = path/to/dict1.txt=True;path/to/dict2.txt=False
 ## 🔧 开发
 
 ### 构建EXE
-`ash
-# 安装构建工具
-pip install nuitka zstandard
 
+# 安装构建工具
+```bash
+pip install nuitka zstandard
+```
 # 构建
+```bash
 nuitka --onefile --windows-console-mode=disable --standalone 
   --enable-plugin=tk-inter --include-package=PIL 
   --include-package=keyboard --include-package=pystray 
   --include-package=psutil --include-package=uiautomation 
   --windows-icon-from-ico=icon.ico GUI.py
-`
+```
 
 ### GitHub Actions CI/CD
 项目使用 GitHub Actions 自动构建和发布：
-- 推送带 * 标签触发自动构建
 - 支持手动触发构建（填入发布说明）
 - 自动上传到 Releases
 - Python 3.10 编译环境
