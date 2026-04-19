@@ -32,6 +32,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install zstandard
 
       - name: Check Python Syntax
         run: |
@@ -59,9 +60,6 @@ jobs:
             --include-package=psutil `
             --include-package=uiautomation `
             $iconArg `
-            --nofollow-import-to=keyboard._mouse_tests `
-            --enable-plugin=anti-bloat `
-            --nofollow-import-to=unittest `
             --nofollow-import-to="*test*" `
             --output-dir=dist `
             GUI.py
