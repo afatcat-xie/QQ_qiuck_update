@@ -48,13 +48,23 @@ jobs:
         run: |
           $iconArg = if (Test-Path "icon.ico") { "--windows-icon-from-ico=icon.ico" } else { "" }
           Write-Host "Building with Nuitka..."
-          python -m nuitka `
-            --standalone `
+          echo yes | python -m nuitka `
             --onefile `
-            --enable-plugin=tk-inter `
-            $iconArg `
             --windows-console-mode=disable `
-            --accept-downloads `
+            --standalone `
+            --enable-plugin=tk-inter `
+            --include-package=openai `
+            --include-package=PIL `
+            --include-package=keyboard `
+            --include-package=pystray `
+            --include-package=pygetwindow `
+            --include-package=pyautogui `
+            $iconArg `
+            --include-package=uiautomation `
+            --nofollow-import-to=keyboard._mouse_tests `
+            --enable-plugin=anti-bloat `
+            --nofollow-import-to=unittest `
+            --nofollow-import-to="*test*" `
             --output-dir=dist `
             GUI.py
           if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed" }
