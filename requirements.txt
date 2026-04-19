@@ -1,4 +1,7 @@
 keyboard
 Pillow
 pystray
+pywin32
+psutil
+uiautomation
 nuitka
