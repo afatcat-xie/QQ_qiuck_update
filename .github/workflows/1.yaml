@@ -59,6 +59,8 @@ jobs:
             --include-package=pystray `
             --include-package=psutil `
             --include-package=uiautomation `
+            --include-package=comtypes `
+            
             $iconArg `
             --nofollow-import-to="*test*" `
             --output-dir=dist `
