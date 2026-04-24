@@ -61,7 +61,6 @@ jobs:
             --include-package=uiautomation `
             --include-package=comtypes `
             $iconArg `
-            --nofollow-import-to="*test*" `
             --output-dir=dist `
             GUI.py
           if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed" }
