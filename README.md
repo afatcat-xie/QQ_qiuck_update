@@ -2,7 +2,6 @@
 
 一个功能强大的QQ自动消息发送工具，支持字典管理、全局快捷键、系统托盘等功能。
 
-![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.10-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-brightgreen)
 
@@ -188,10 +187,6 @@ nuitka --onefile --windows-console-mode=disable --standalone
 - 确认QQ窗口处于焦点
 - 验证输入框是否为文本编辑框
 - 检查发送间隔设置
-
-## 📄 许可证
-
-MIT License
 
 ## 🤝 贡献
 
