@@ -59,11 +59,8 @@ jobs:
             --include-package=pystray `
             --include-package=psutil `
             --include-package=uiautomation `
-<<<<<<< HEAD
             --include-package=easygui `
-=======
             --include-package=comtypes `
->>>>>>> 9a64e39062430120cbd9f8fb865e58ed24a53163
             $iconArg `
             --output-dir=dist `
             GUI.py
