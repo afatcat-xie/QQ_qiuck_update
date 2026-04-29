@@ -124,6 +124,7 @@ dictionary_enabled = path/to/dict1.txt=True;path/to/dict2.txt=False
 | uiautomation | UI自动化 |
 | Nuitka | 编译打包 |
 | zstandard | onefile压缩 |
+| easygui | 降低维护成本 |
 
 ## 🔧 开发
 
@@ -139,6 +140,7 @@ nuitka --onefile --windows-console-mode=disable --standalone
   --enable-plugin=tk-inter --include-package=PIL 
   --include-package=keyboard --include-package=pystray 
   --include-package=psutil --include-package=uiautomation 
+  --include-package=easygui
   --windows-icon-from-ico=icon.ico GUI.py
 ```
 
@@ -170,6 +172,7 @@ nuitka --onefile --windows-console-mode=disable --standalone
 - 检查Windows版本（需7+）
 - 确保Python 3.10+ 已安装
 - 以管理员身份运行
+- 删掉用户目录下的app.lock
 
 ### 快捷键无效
 - 检查是否以管理员身份运行

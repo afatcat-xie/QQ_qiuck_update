@@ -6,3 +6,4 @@ psutil
 uiautomation
 nuitka
 comtypes
+easygui
